@@ -255,13 +255,26 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     if( binfo.stop_early(loop_step_idx * Cta_tile_p::N) ) return;
 
     Gemm1 gemm_q_k(smem_, tidx);
+
     // Allocate the global memory tile loader for Q.
     Gmem_tile_q gmem_q(params.q_ptr, params.q_row_stride_in_elts, params.q_head_stride_in_elts, binfo, tidx, true);
+    // Gmem_tile_q is fmha::Gmem_tile_qkv<Cta_tile_p, fmha::BITS_PER_ELEMENT_A, STEP, D>;
+    //  Gmem_tile_q is fmha::Gmem_tile_qkv, 取数逻辑在gmem_tile.h
+    // 指针q_ptr引入数据，构造 csrc/flash_attn/src/fmha/gmem_tile.h:67
+    // row_stide is dim0, head_strid is dim1
+
     // Allocate the global memory tile loader for O.
     Gmem_tile_o gmem_o(params.o_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
     Gmem_tile_o_tmp gmem_o_tmp(params.o_tmp_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
+
+
+    // Allocate the global memory tile loader for mask.
+    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+    // conctructor
+    // Gmem_tile_mask gmem_mask(params, binfo, tidx);
+
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
     // Wind gmem tiles to the correct position.
@@ -275,11 +288,15 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
     gmem_softmax_lse.move(begin);
-    // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-    //     printf("begin = %d, steps = %d\n", begin, steps);
-    // }
+    
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+       printf("begin = %d, steps = %d\n", begin, steps);
+    }
+
 
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
+    // mask in used pad actually, actual_seqlen_k is params.cu_seqlens_k[bidb + 1] - params.cu_seqlens_k[bidb]
+    // why works for the difference output ?
 
     // Allocate the global memory tile loader for K.
     Gmem_tile_k gmem_k(params.k_ptr, params.k_row_stride_in_elts, params.k_head_stride_in_elts, binfo, tidx, false);
@@ -302,6 +319,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // Trigger the loads for K.
     gmem_k.load();
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+       printf("Gemm load k...\n");
+       gmem_k.print();
+    }
     // Trigger the loads for Q.
     gmem_q.load();
     // Trigger the loads for V.
@@ -392,7 +413,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
 
-        // Apply the mask.
+        // Apply the mask. 
+        // this impl is more like padding
+        // TODO apply + mask + bias
         softmax.apply_mask(mask);
 
         if( Kernel_traits::SHARE_SMEM_FOR_K_AND_V && l == 0 ) {
@@ -651,6 +674,15 @@ inline __device__ void device_1xN_loop(const Params &params) {
     const int tidx = threadIdx.x;
 
     const int tidx_global = (bidb * params.h + bidh) * blockDim.x * 2 + tidx;
+    // tidx_global = (blockIdx.x * params.h + blockIdx.y) * blockDim.x * 2 + threadIdx.x;
+    // what is mean of 2?
+    if (tidx == 0) {
+        printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
+    }
+    if (tidx == 1) {
+        printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
+    }
+
     auto seeds = at::cuda::philox::unpack(params.philox_args);
     Philox ph0(std::get<0>(seeds), tidx_global, std::get<1>(seeds));
     Philox ph1(std::get<0>(seeds), tidx_global + blockDim.x, std::get<1>(seeds));
@@ -658,6 +690,7 @@ inline __device__ void device_1xN_loop(const Params &params) {
     const int STEPS = (params.seqlen_q + M - 1) / M;
 
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
+    // Tc, loop over k in algo2 line 6, blocksize_c in line 4
     if (params.seqlen_k == blocksize_c) {
         fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
     } else {

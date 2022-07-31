@@ -125,10 +125,12 @@ ext_modules.append(
             "csrc/flash_attn/src/fmha_block_dgrad_fp16_kernel_loop.sm80.cu",
         ],
         extra_compile_args={
-            "cxx": ["-O3"] + generator_flag,
+            # "cxx": ["-O3"] + generator_flag,
+            "cxx": ["-g"] + generator_flag,
             "nvcc": append_nvcc_threads(
                 [
-                    "-O3",
+                    #"-O3",
+                    "-g",
                     "-U__CUDA_NO_HALF_OPERATORS__",
                     "-U__CUDA_NO_HALF_CONVERSIONS__",
                     "--expt-relaxed-constexpr",
@@ -142,6 +144,12 @@ ext_modules.append(
             ),
         },
         include_dirs=[
+            Path(this_dir) / 'csrc' / 'flash_attn',
+            Path(this_dir) / 'csrc' / 'flash_attn' / 'src',
+            Path(this_dir) / 'csrc' / 'flash_attn' / 'cutlass' / 'include',
+        ],
+        # add depends for modification of header file
+        depends = [
             Path(this_dir) / 'csrc' / 'flash_attn',
             Path(this_dir) / 'csrc' / 'flash_attn' / 'src',
             Path(this_dir) / 'csrc' / 'flash_attn' / 'cutlass' / 'include',

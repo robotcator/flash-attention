@@ -117,6 +117,20 @@ struct Gmem_tile_qkv {
         }
     }
 
+    // print data.
+    inline __device__ void print() {
+        int row_ = tidx_ / THREADS_PER_ROW;
+        printf("print LDGS %d\n", LDGS);
+        #pragma unroll
+        for( int ii = 0; ii < LDGS; ++ii ) {
+            char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
+            if( (row_ + ii * ROWS_PER_LDG) < min(ROWS, actual_seqlen) ) {
+                printf("%f\n", *(ptr_ + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
+                printf("%f\n", (ptr_ + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
+            }
+        }
+    }
+
     // Store data to memory.
     inline __device__ void store(const uint4 (&data)[LDGS]) {
         int row_ = tidx_ / THREADS_PER_ROW;
@@ -402,6 +416,27 @@ struct Gmem_tile_mma_s : public Base {
             }
         }
     }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// attn mask struct like s, maybe later can reuse the above declaration
+template< typename Cta_tile, typename Base = Gmem_tile_mma_sd<Cta_tile, sizeof(uint16_t)> >
+struct Gmem_tile_mma_mask : public Base {
+
+    // The number of mmas in the vertical dimension.
+    static constexpr int M = Base::MMAS_M;
+    // The number of mmas in the horizontal dimension.
+    static constexpr int N = Base::MMAS_N;
+    // The type of the vectors stored by each STG.
+    using Type = typename Base::Type;
+
+    // Ctor.
+    template< typename Params, typename Block_info >
+    inline __device__ Gmem_tile_mma_mask(const Params &params, const Block_info& binfo, const int tidx) 
+        : Base(params.attn_mask_ptr, params, binfo.bidb, binfo.bidh, tidx) {
+    }
+    // TODO load data impl
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

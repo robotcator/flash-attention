@@ -73,6 +73,12 @@ struct Qkv_params {
 
 struct FMHA_fprop_params : public Qkv_params {
 
+    // The attn mask matrix
+    void * __restrict__ attn_mask_ptr;
+
+    // The attn bias matrix
+    void * __restrict__ attn_bias_ptr;
+
     // The O matrix (output).
     void * __restrict__ o_ptr;
 
