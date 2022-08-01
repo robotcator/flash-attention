@@ -443,7 +443,7 @@ struct Gmem_tile_mma_mask : public Base {
     }
     // TODO load data impl
 
-    // Load from global memory.
+    // Load from global memory to Fragment.
     template<typename Fragment>
     inline __device__ void load(Fragment (&frag)[N][M]) {
         #pragma unroll

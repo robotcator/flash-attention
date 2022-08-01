@@ -415,7 +415,13 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         
         gmem_mask.load(frag_mask);
         // acc_p.template add<Frag_mask>(frag_mask);
-        acc_p.add(frag_mask);
+        // acc_p.add(frag_mask);
+        // mask tranpose or not
+        for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+            for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
+                acc_p[mi][ni].add(frag_mask[ni][mi]);
+            }
+        }
         gmem_mask.move();
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
