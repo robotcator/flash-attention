@@ -52,6 +52,7 @@ struct Gemm_Q_K_base {
     using Mma_tile_p = fmha::Hmma_tile<Cta_tile_p>;
 
     static constexpr int SMEM_BYTES_SOFTMAX = Cta_tile_p::M * Cta_tile_p::WARPS_N * sizeof(float) * 2;
+    // ?
 
     __device__ inline Gemm_Q_K_base(char * smem_ptr_q, char * smem_ptr_k, const int tidx) 
         : smem_q(smem_ptr_q, tidx)
@@ -90,6 +91,7 @@ struct Gemm_Q_K : public Gemm_Q_K_base<Kernel_traits> {
     static constexpr int SMEM_OFFSET_O = Smem_tile_q::BYTES_PER_TILE;
     static constexpr int SMEM_OFFSET_SOFTMAX = SMEM_OFFSET_O + Smem_tile_o::BYTES_PER_TILE;
     static constexpr int SMEM_OFFSET_V = Smem_tile_q::BYTES_PER_TILE + (SHARE_SMEM_FOR_K_AND_V ? 0 : Smem_tile_k::BYTES_PER_TILE);
+    // ? offset of smem
 
     // Q | K / V
     //   | O | SOFTMAX
@@ -262,6 +264,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     //  Gmem_tile_q is fmha::Gmem_tile_qkv, 取数逻辑在gmem_tile.h
     // 指针q_ptr引入数据，构造 csrc/flash_attn/src/fmha/gmem_tile.h:67
     // row_stide is dim0, head_strid is dim1
+    // constexpr int BITS_PER_ELEMENT_A = sizeof(A_type) * 8;
+    // using A_type = uint16_t;
 
     // Allocate the global memory tile loader for O.
     Gmem_tile_o gmem_o(params.o_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
@@ -269,17 +273,18 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-
     // Allocate the global memory tile loader for mask.
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
-    // Gmem_tile_mask gmem_mask(params, binfo, tidx);
+    Gmem_tile_mask gmem_mask(params, binfo, tidx);
+    // TODO: load fun as s
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
     // Wind gmem tiles to the correct position.
     static_assert(Cta_tile_p::N % Cta_tile_p::M == 0);
     const int begin_og = begin;
+    // begin is 0
     begin = Is_causal ? std::max(begin, loop_step_idx * Cta_tile_p::N / Cta_tile_p::M) : begin;
     const int steps_og = steps;
     steps -= begin - begin_og;
@@ -287,12 +292,14 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o.move(begin);
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
+    // TODO: mask move 
+    gmem_mask.move(begin);
+
     gmem_softmax_lse.move(begin);
     
-    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-       printf("begin = %d, steps = %d\n", begin, steps);
-    }
-
+    // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+    //    printf("begin = %d, steps = %d\n", begin, steps);
+    // }
 
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
     // mask in used pad actually, actual_seqlen_k is params.cu_seqlens_k[bidb + 1] - params.cu_seqlens_k[bidb]
@@ -304,6 +311,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     Gmem_tile_v gmem_v(params.v_ptr, params.v_row_stride_in_elts, params.v_head_stride_in_elts, binfo, tidx, false);
     // The base pointer of smem_v;
     char *smem_v_ = &smem_[Gemm1::SMEM_OFFSET_V];
+    // smem_ is continous memory, each part is v, o
     
     // Allocate the shared memory tile loader for V. We use the same as K so be careful!!!
     Smem_tile_v smem_v(smem_v_, tidx);
@@ -315,14 +323,12 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
         if (Return_softmax) { gmem_s.move(loop_step_idx * steps_og); }
+        // TODO: mask move as s
+        gmem_mask.move(loop_step_idx * steps_og);
     }
 
     // Trigger the loads for K.
     gmem_k.load();
-    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-       printf("Gemm load k...\n");
-       gmem_k.print();
-    }
     // Trigger the loads for Q.
     gmem_q.load();
     // Trigger the loads for V.
@@ -351,6 +357,12 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     }
 
     __syncthreads();
+
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+       printf("Gemm load k...\n");
+       // https://stackoverflow.com/questions/7397934/calling-template-function-within-template-class
+       gmem_k.template print</*typename=*/elem_type>();
+    }
 
     // Load the fragments for Q.
     gemm_q_k.load_q();
@@ -391,7 +403,23 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         fmha::Clear_accumulator<typename fmha::Accumulator_type, Cta_tile_p::WARPS_K>::apply(acc_p);
 
         // Do this part of P = Q * K^T.
+        // ? M / N 参数？
         gemm_q_k(acc_p);
+        // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
+        // move(1)
+
+        using Frag_mask = fmha::Fragment_a<fmha::Row>;
+        // struct Fragment_a : public Fragment<uint16_t, 8> {
+        // struct Fragment_accumulator : public Fragment<float, 8> {
+        Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+        gmem_mask.load(frag_mask);
+        acc_p.add(frag_mask);
+        gmem_mask.move();
+
+        if (Return_softmax) {
+            gmem_s.store(frag_p, mask);
+            gmem_s.move();
+        }
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
         //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
@@ -415,7 +443,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Apply the mask. 
         // this impl is more like padding
-        // TODO apply + mask + bias
         softmax.apply_mask(mask);
 
         if( Kernel_traits::SHARE_SMEM_FOR_K_AND_V && l == 0 ) {
@@ -503,6 +530,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         static_assert(Mma_tile_o::MMAS_M == Mma_tile_p::MMAS_M);
         static_assert(Mma_tile_o::MMAS_K == Mma_tile_p::MMAS_N);
         softmax.template pack<elem_type>(frag_p);
+        // ? pack 
         if (Return_softmax) {
             gmem_s.store(frag_p, mask);
             gmem_s.move();
@@ -679,9 +707,9 @@ inline __device__ void device_1xN_loop(const Params &params) {
     if (tidx == 0) {
         printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
     }
-    if (tidx == 1) {
-        printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
-    }
+    // if (tidx == 1) {
+    //     printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
+    // }
 
     auto seeds = at::cuda::philox::unpack(params.philox_args);
     Philox ph0(std::get<0>(seeds), tidx_global, std::get<1>(seeds));
@@ -692,6 +720,8 @@ inline __device__ void device_1xN_loop(const Params &params) {
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
     // Tc, loop over k in algo2 line 6, blocksize_c in line 4
     if (params.seqlen_k == blocksize_c) {
+        // inline __device__ void device_1xN_(const Params &params, const int bidb, const int bidh, int begin, int steps, Prng &ph0, Prng &ph1, const int loop_step_idx) {
+
         fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
     } else {
         const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;

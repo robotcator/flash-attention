@@ -114,20 +114,23 @@ struct Gmem_tile_qkv {
         #pragma unroll
         for( int ii = 0; ii < LDGS; ++ii ) {
             fct.load(ii, preds[ii]);
+            // // The fetch registers. fetch_
+            // -> inline __device__ void load(int ii, bool p)
+            // -> ldg(fetch_[ii], ptrs_[ii]);
+            // -> inline __device__ void ldg(uint4 &dst, const void *ptr) {
+            //     dst = *reinterpret_cast<const uint4*>(ptr);
+            // }
         }
     }
 
     // print data.
+    template<typename elem_type>
     inline __device__ void print() {
-        int row_ = tidx_ / THREADS_PER_ROW;
+        // int row_ = tidx_ / THREADS_PER_ROW;
         printf("print LDGS %d\n", LDGS);
-        #pragma unroll
         for( int ii = 0; ii < LDGS; ++ii ) {
-            char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
-            if( (row_ + ii * ROWS_PER_LDG) < min(ROWS, actual_seqlen) ) {
-                printf("%f\n", *(ptr_ + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
-                printf("%f\n", (ptr_ + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
-            }
+            // char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
+            printf("data: %f\n", *(elem_type *)(ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
         }
     }
 
@@ -140,6 +143,8 @@ struct Gmem_tile_qkv {
             char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
             if( (row_ + ii * ROWS_PER_LDG) < min(ROWS, actual_seqlen) ) {
                 fmha::stg(ptr_, data[ii]);
+                // stg function, inline __device__ void stg(void *ptr, uint2 val)
+                // *reinterpret_cast<uint8_t*>(ptr) = val;
             }
         }
     }
@@ -437,6 +442,19 @@ struct Gmem_tile_mma_mask : public Base {
         : Base(params.attn_mask_ptr, params, binfo.bidb, binfo.bidh, tidx) {
     }
     // TODO load data impl
+
+    // Load from global memory.
+    template<typename Mask>
+    inline __device__ void load(Fragment (&frag)[N][M]) {
+        #pragma unroll
+        for( int mi = 0; mi < M; mi++ ) {
+            #pragma unroll
+            for( int ni = 0; ni < N; ni++ ) {
+                frag[mi][ni] = make_uint4(0, 0, 0, 0);
+                Base::load(frag[mi][ni], mi, ni);
+            }
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
