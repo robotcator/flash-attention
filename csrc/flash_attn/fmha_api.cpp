@@ -102,6 +102,7 @@ void set_params_fprop(FMHA_fprop_params &params,
     params.attn_mask_ptr = attn_mask;
     params.attn_bias_ptr = attn_bias;
 
+
     // Set the different scale values.
     // const float scale_bmm1 = 1.f / sqrtf(d);
     const float scale_bmm1 = softmax_scale;

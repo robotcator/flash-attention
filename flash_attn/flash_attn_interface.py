@@ -16,6 +16,7 @@ def _get_block_size(device, head_dim, is_dropout):
 
 def _flash_attn_forward(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, attn_mask, dropout_p,
                         softmax_scale, causal, return_softmax):
+    # import pdb; pdb.set_trace()
     if attn_mask is None:
         out, softmax_lse, *rest = flash_attn_cuda.fwd(
             q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale,

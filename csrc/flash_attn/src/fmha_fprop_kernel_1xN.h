@@ -273,11 +273,14 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
+    bool has_attn = !(params.attn_mask_ptr == nullptr);
     // Allocate the global memory tile loader for mask.
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-    // conctructor
-    Gmem_tile_mask gmem_mask(params, binfo, tidx);
-    // TODO: load fun as s
+    if (has_attn) {   
+        // conctructor
+        Gmem_tile_mask gmem_mask(params, binfo, tidx);
+        // TODO: load fun as s
+    }
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
@@ -292,8 +295,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o.move(begin);
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
-    // TODO: mask move 
-    gmem_mask.move(begin);
+    
+    if (has_attn) {
+        // TODO: mask move 
+        gmem_mask.move(begin);
+    }
 
     gmem_softmax_lse.move(begin);
     
@@ -323,8 +329,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
         if (Return_softmax) { gmem_s.move(loop_step_idx * steps_og); }
-        // TODO: mask move as s
-        gmem_mask.move(loop_step_idx * steps_og);
+        if (has_attn) {
+            // TODO: mask move as s
+            gmem_mask.move(loop_step_idx * steps_og);
+        }
     }
 
     // Trigger the loads for K.
@@ -408,21 +416,23 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
         // move(1)
 
-        using Frag_mask = fmha::Fragment_a<fmha::Row>;
-        // struct Fragment_a : public Fragment<uint16_t, 8> {
-        // struct Fragment_accumulator : public Fragment<float, 8> {
-        Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-        
-        gmem_mask.load(frag_mask);
-        // acc_p.template add<Frag_mask>(frag_mask);
-        // acc_p.add(frag_mask);
-        // mask tranpose or not
-        for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
-            for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                acc_p[mi][ni].add(frag_mask[ni][mi]);
+        if (has_attn) {
+            using Frag_mask = fmha::Fragment_a<fmha::Row>;
+            // struct Fragment_a : public Fragment<uint16_t, 8> {
+            // struct Fragment_accumulator : public Fragment<float, 8> {
+            Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+            
+            gmem_mask.load(frag_mask);
+            // acc_p.template add<Frag_mask>(frag_mask);
+            // acc_p.add(frag_mask);
+            // mask tranpose or not
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+                for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
+                    acc_p[mi][ni].add(frag_mask[ni][mi]);
+                }
             }
+            gmem_mask.move();
         }
-        gmem_mask.move();
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
         //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
