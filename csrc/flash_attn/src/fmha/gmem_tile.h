@@ -451,7 +451,7 @@ struct Gmem_tile_mma_mask : public Base {
             #pragma unroll
             for( int ni = 0; ni < N; ni++ ) {
                 uint4 dst;
-                Base::load(dst mi, ni);
+                Base::load(dst, mi, ni);
                 frag[ni][mi].reg(0) = dst.x;
                 frag[ni][mi].reg(2) = dst.y;
                 frag[ni][mi].reg(1) = dst.z;

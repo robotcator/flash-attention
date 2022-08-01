@@ -412,8 +412,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // struct Fragment_a : public Fragment<uint16_t, 8> {
         // struct Fragment_accumulator : public Fragment<float, 8> {
         Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+        
         gmem_mask.load(frag_mask);
-        acc_p.template add<Frag_mask>(frag_mask);
+        // acc_p.template add<Frag_mask>(frag_mask);
+        acc_p.add(frag_mask);
         gmem_mask.move();
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
