@@ -358,11 +358,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     __syncthreads();
 
-    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-       printf("Gemm load k...\n");
-       // https://stackoverflow.com/questions/7397934/calling-template-function-within-template-class
-       gmem_k.template print</*typename=*/elem_type>();
-    }
+    // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+    //    printf("Gemm load k...\n");
+    //    // https://stackoverflow.com/questions/7397934/calling-template-function-within-template-class
+    //    gmem_k.template print</*typename=*/elem_type>();
+    // }
 
     // Load the fragments for Q.
     gemm_q_k.load_q();
@@ -413,13 +413,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // struct Fragment_accumulator : public Fragment<float, 8> {
         Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
         gmem_mask.load(frag_mask);
-        acc_p.add(frag_mask);
+        acc_p.template add<Frag_mask>(frag_mask);
         gmem_mask.move();
-
-        if (Return_softmax) {
-            gmem_s.store(frag_p, mask);
-            gmem_s.move();
-        }
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
         //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));

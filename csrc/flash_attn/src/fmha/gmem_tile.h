@@ -444,14 +444,18 @@ struct Gmem_tile_mma_mask : public Base {
     // TODO load data impl
 
     // Load from global memory.
-    template<typename Mask>
+    template<typename Fragment>
     inline __device__ void load(Fragment (&frag)[N][M]) {
         #pragma unroll
         for( int mi = 0; mi < M; mi++ ) {
             #pragma unroll
             for( int ni = 0; ni < N; ni++ ) {
-                frag[mi][ni] = make_uint4(0, 0, 0, 0);
-                Base::load(frag[mi][ni], mi, ni);
+                uint4 dst;
+                Base::load(dst mi, ni);
+                frag[ni][mi].reg(0) = dst.x;
+                frag[ni][mi].reg(2) = dst.y;
+                frag[ni][mi].reg(1) = dst.z;
+                frag[ni][mi].reg(3) = dst.w;
             }
         }
     }
