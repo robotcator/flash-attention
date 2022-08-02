@@ -276,11 +276,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     bool has_attn = !(params.attn_mask_ptr == nullptr);
     // Allocate the global memory tile loader for mask.
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-    if (has_attn) {   
-        // conctructor
-        Gmem_tile_mask gmem_mask(params, binfo, tidx);
-        // TODO: load fun as s
-    }
+    // conctructor
+    Gmem_tile_mask gmem_mask(params, binfo, tidx);
+    // TODO: load fun as s
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
@@ -291,6 +289,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     begin = Is_causal ? std::max(begin, loop_step_idx * Cta_tile_p::N / Cta_tile_p::M) : begin;
     const int steps_og = steps;
     steps -= begin - begin_og;
+    // begin - begin_og = 0
+    // steps -= 0
     gmem_q.move(begin);
     gmem_o.move(begin);
     gmem_o_tmp.move(begin);
@@ -299,6 +299,14 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     if (has_attn) {
         // TODO: mask move 
         gmem_mask.move(begin);
+    }
+
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+        printf("og begin %d\n", begin_og);
+        printf("begin %d\n", begin);
+        printf("og  step %d\n", steps_og);
+        printf("begin %d\n", steps);
+        printf("loop_step_idx %d\n", loop_step_idx);
     }
 
     gmem_softmax_lse.move(begin);
@@ -416,27 +424,68 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
         // move(1)
 
+        // debug: before add mask
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
+            printf("before mask print acc_p\n");
+            // for (int i = 0; i < acc_p[0][0].NUM_ELTS; i ++) {
+            for (int i = 0; i < 8; i ++) {
+                printf("i=%d, acc_p=%.6f \n", i, acc_p[0][0].elt(i));
+            }
+            printf("\n");
+            printf("end print acc_p\n");
+        }
+
         if (has_attn) {
+            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+                printf(" add attn mask ====\n");
+            }
             using Frag_mask = fmha::Fragment_a<fmha::Row>;
+            // template<
+            // // The type of the elements.
+            // typename Data_type_,
+            // // The number of elements.
+            // int NUM_ELTS_,
             // struct Fragment_a : public Fragment<uint16_t, 8> {
             // struct Fragment_accumulator : public Fragment<float, 8> {
             Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-            
             gmem_mask.load(frag_mask);
             // acc_p.template add<Frag_mask>(frag_mask);
             // acc_p.add(frag_mask);
             // mask tranpose or not
+            __syncthreads();
+
+            
             for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
                 for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                    acc_p[mi][ni].add(frag_mask[ni][mi]);
+                    acc_p[mi][ni].template add<float, Frag_mask>(frag_mask[ni][mi]);
                 }
+            }
+
+            // debug: 
+            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+                printf("print frag_mask %d\n", l);
+                // for (int i = 0; i < frag_mask[0][0].NUM_ELTS; i ++) {
+                for (int i = 0; i < 8; i ++) {
+                    printf("i=%d, frag_mask=%.6f, %u\n", i, 
+                        frag_mask[0][0].elt(i), 
+                        frag_mask[0][0].elt(i));
+                }
+                printf("\n");
+                printf("end print frag_mask\n");
             }
             gmem_mask.move();
         }
 
-        // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
-        //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
-        // }
+        // debug: after add mask
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
+            printf("after mask print acc_p\n");
+            // for (int i = 0; i < acc_p[0][0].NUM_ELTS; i ++) {
+            for (int i = 0; i < 8; i ++) {
+                printf("i=%d, acc_p=%.6f\n", i, acc_p[0][0].elt(i));
+            }
+            printf("\n");
+            printf("end print acc_p\n");
+        }
 
         uint4 out[Gmem_tile_o::STGS_PER_LOOP];
         if (!Is_first) { gmem_o_tmp.load(out, 0); }
@@ -453,6 +502,23 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
+
+        // if (is_thread_0()) {
+        //     for (int i_m = 0; i_m < Mma_tile_p::MMAS_M * 2; i_m ++){
+        //         printf("after_mask: loop_step_idx = %03d, l = %03d, threadIdx.x = %03d, threadIdx.y = %03d, i_m = %01d, accp ele(0) = %f,  ele(1) = %f, ele(2) = %f, ele(3) = %f, ele(4) = %f, ele(5) = %f, ele(6) = %f, ele(7) = %f \n",
+        //                     loop_step_idx, l, threadIdx.x, threadIdx.y, i_m,
+        //                     softmax.elt_[i_m][0],
+        //                     softmax.elt_[i_m][1],
+        //                     softmax.elt_[i_m][2],
+        //                     softmax.elt_[i_m][3],
+        //                     softmax.elt_[i_m][4],
+        //                     softmax.elt_[i_m][5],
+        //                     softmax.elt_[i_m][6],
+        //                     softmax.elt_[i_m][7]
+        //         );
+        //     }
+        // }
+
 
         // Apply the mask. 
         // this impl is more like padding
@@ -717,9 +783,9 @@ inline __device__ void device_1xN_loop(const Params &params) {
     const int tidx_global = (bidb * params.h + bidh) * blockDim.x * 2 + tidx;
     // tidx_global = (blockIdx.x * params.h + blockIdx.y) * blockDim.x * 2 + threadIdx.x;
     // what is mean of 2?
-    if (tidx == 0) {
-        printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
-    }
+    // if (tidx == 0) {
+    //     printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
+    // }
     // if (tidx == 1) {
     //     printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
     // }

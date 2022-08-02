@@ -402,6 +402,8 @@ struct Gmem_tile_mma_s : public Base {
                 dst.w = frag[ni][mi].reg(3);
                 if( mask.any_valid(mi, ni) ) {
                     Base::store(dst, mi, ni);
+                    // uint32_t offset = (mi * MMAS_N + ni) * BYTES_PER_ROW;
+                    // fmha::stg(ptr_ + offset, data);
                 }
             }
         }

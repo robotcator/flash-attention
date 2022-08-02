@@ -112,6 +112,12 @@ struct alignas(static_cast<int>(Base_::ALIGNMENT)) Fragment : public Base_ {
         return reinterpret_cast<Data_type_*>(&this->regs_[0])[ii];
     }
 
+    // xh: Immutable access to the elements and cast to elem_type.
+    template< typename elem_type >
+    inline __device__ elem_type& elt(int ii) {
+        return reinterpret_cast<elem_type*>(&this->regs_[0])[ii];
+    }
+
     // Immutable access to the elements with a cast.
     template< typename Cast_type >
     inline __device__ const Cast_type& elt_as(int ii) const {
@@ -165,6 +171,12 @@ struct Fragment_b : public Fragment<uint16_t, 8> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+template< typename Layout >
+struct Fragment_c : public Fragment<half, 8> {
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct Fragment_accumulator : public Fragment<float, 8> {
 
     // The base class.
@@ -175,6 +187,14 @@ struct Fragment_accumulator : public Fragment<float, 8> {
     inline __device__ void add(const Other_fragment_ &other) {
         for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
             this->elt(ii) = this->elt(ii) + other.elt(ii);
+        }
+    }
+
+    template< typename elem_type, typename Other_fragment_ >
+    inline __device__ void add(const Other_fragment_ &other) {
+        for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
+            this->elt(ii) = this->elt(ii) + other.template elt<elem_type>(ii);
+
         }
     }
 
