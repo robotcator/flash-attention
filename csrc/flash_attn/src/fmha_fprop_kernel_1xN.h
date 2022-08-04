@@ -198,7 +198,7 @@ constexpr size_t get_dynamic_smem_size(){
     return Gemm_Q_K<Kernel_traits, Kernel_traits::K_IN_REGS>::SMEM_BYTES;
 }
 
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Return_softmax, bool Is_first, bool Is_last, typename Params, typename Prng>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Return_softmax, bool has_attn, bool has_bias, bool Is_first, bool Is_last, typename Params, typename Prng>
 inline __device__ void device_1xN_(const Params &params, const int bidb, const int bidh, int begin, int steps, Prng &ph0, Prng &ph1, const int loop_step_idx) {
 
 #if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ >= 800
@@ -273,14 +273,14 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-    bool has_attn = !(params.attn_mask_ptr == nullptr);
+    // bool has_attn = !(params.attn_mask_ptr == nullptr);
     // Allocate the global memory tile loader for mask.
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
     Gmem_tile_mask gmem_mask(params, binfo, tidx);
     // TODO: load fun as s
 
-    bool has_bias = !(params.attn_bias_ptr == nullptr);
+    // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
     using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
@@ -303,12 +303,12 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
     
-    if (has_attn) {
+    if constexpr (has_attn) {
         // TODO: mask move 
         gmem_mask.move(begin);
     }
 
-    if (has_bias) {
+    if constexpr (has_bias) {
         // TODO: bias move 
         gmem_bias.move(begin);
     }
@@ -349,11 +349,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
         if (Return_softmax) { gmem_s.move(loop_step_idx * steps_og); }
-        if (has_attn) {
+        if constexpr (has_attn) {
             // TODO: mask move as s
             gmem_mask.move(loop_step_idx * steps_og);
         }
-        if (has_bias) {
+        if constexpr (has_bias) {
             gmem_bias.move(loop_step_idx * steps_og);
         }
     }
@@ -449,7 +449,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             printf("end print acc_p\n");
         }
 
-        if (has_attn) {
+        if constexpr (has_attn) {
             if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
                 printf(" add attn mask ====\n");
             }
@@ -524,7 +524,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 
 
-        if (has_bias) {
+        if constexpr (has_bias) {
             if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
                 printf(" add attn mask ====\n");
             }
@@ -883,7 +883,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Return_softmax, typename Params>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Return_softmax, bool Need_attn_mask, bool Need_attn_bias, typename Params>
 inline __device__ void device_1xN_loop(const Params &params) {
 
     // The block index for the batch.
@@ -913,15 +913,14 @@ inline __device__ void device_1xN_loop(const Params &params) {
     // Tc, loop over k in algo2 line 6, blocksize_c in line 4
     if (params.seqlen_k == blocksize_c) {
         // inline __device__ void device_1xN_(const Params &params, const int bidb, const int bidh, int begin, int steps, Prng &ph0, Prng &ph1, const int loop_step_idx) {
-
-        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
+        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
     } else {
         const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;
-        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, true, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
+        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, true, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
         for (int loop_step_idx = 1; loop_step_idx < max_loop_steps - 1; loop_step_idx++) {
-            fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, false, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, loop_step_idx);
+            fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, false, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, loop_step_idx);
         }
-        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, false, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, max_loop_steps - 1);
+        fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, false, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, max_loop_steps - 1);
     }
 }
 
