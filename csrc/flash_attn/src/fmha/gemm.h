@@ -211,6 +211,7 @@ struct Fragment_accumulator : public Fragment<float, 8> {
 
     template< typename Other_fragment_ >
     inline __device__ void addf(const Other_fragment_ &other) {
+        #pragma unroll
         for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
             this->elt(ii) = this->elt(ii) +  toFloat(other.elt(ii));
         }

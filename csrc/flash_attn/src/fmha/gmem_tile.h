@@ -443,7 +443,42 @@ struct Gmem_tile_mma_mask : public Base {
     inline __device__ Gmem_tile_mma_mask(const Params &params, const Block_info& binfo, const int tidx) 
         : Base(params.attn_mask_ptr, params, binfo.bidb, binfo.bidh, tidx) {
     }
-    // TODO load data impl
+
+    // Load from global memory to Fragment.
+    template<typename Fragment>
+    inline __device__ void load(Fragment (&frag)[N][M]) {
+        #pragma unroll
+        for( int mi = 0; mi < M; mi++ ) {
+            #pragma unroll
+            for( int ni = 0; ni < N; ni++ ) {
+                uint4 dst;
+                Base::load(dst, mi, ni);
+                frag[ni][mi].reg(0) = dst.x;
+                frag[ni][mi].reg(2) = dst.y;
+                frag[ni][mi].reg(1) = dst.z;
+                frag[ni][mi].reg(3) = dst.w;
+            }
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// attn bias struct like s, maybe later can reuse the above declaration
+template< typename Cta_tile, typename Base = Gmem_tile_mma_sd<Cta_tile, sizeof(uint16_t)> >
+struct Gmem_tile_mma_bias : public Base {
+
+    // The number of mmas in the vertical dimension.
+    static constexpr int M = Base::MMAS_M;
+    // The number of mmas in the horizontal dimension.
+    static constexpr int N = Base::MMAS_N;
+    // The type of the vectors stored by each STG.
+    using Type = typename Base::Type;
+
+    // Ctor.
+    template< typename Params, typename Block_info >
+    inline __device__ Gmem_tile_mma_bias(const Params &params, const Block_info& binfo, const int tidx) 
+        : Base(params.attn_bias_ptr, params, binfo.bidb, binfo.bidh, tidx) {
+    }
 
     // Load from global memory to Fragment.
     template<typename Fragment>

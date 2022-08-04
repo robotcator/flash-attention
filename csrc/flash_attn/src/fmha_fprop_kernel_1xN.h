@@ -280,6 +280,13 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     Gmem_tile_mask gmem_mask(params, binfo, tidx);
     // TODO: load fun as s
 
+    bool has_bias = !(params.attn_bias_ptr == nullptr);
+    // Allocate the global memory tile loader for bias.
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_mask;
+    // conctructor
+    Gmem_tile_bias gmem_bias(params, binfo, tidx);
+    // TODO: load fun as s
+
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
     // Wind gmem tiles to the correct position.
@@ -299,6 +306,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     if (has_attn) {
         // TODO: mask move 
         gmem_mask.move(begin);
+    }
+
+    if (has_bias) {
+        // TODO: bias move 
+        gmem_bias.move(begin);
     }
 
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
@@ -340,6 +352,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         if (has_attn) {
             // TODO: mask move as s
             gmem_mask.move(loop_step_idx * steps_og);
+        }
+        if (has_bias) {
+            gmem_bias.move(loop_step_idx * steps_og);
         }
     }
 
@@ -450,7 +465,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             // struct Fragment_a : public Fragment<uint16_t, 8> {
             // struct Fragment_accumulator : public Fragment<float, 8> {
             Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-            
+
             gmem_mask.load(frag_mask);
             // see the 463
             // acc_p.template add<Frag_mask>(frag_mask);
@@ -459,7 +474,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             // mask tranpose or not
             __syncthreads();
             
+            #pragma unroll
             for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+                #pragma unroll
                 for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
                     // acc_p[mi][ni].template addf<Frag_mask, elem_type>(frag_mask[ni][mi]);
                     // acc_p[mi][ni].add(frag_mask[ni][mi]);
@@ -505,6 +522,65 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             }
             gmem_mask.move();
         }
+
+
+        if (has_bias) {
+            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+                printf(" add attn mask ====\n");
+            }
+            // method 1
+            using Frag_bias = fmha::Fragment_c<fmha::Row, elem_type>;
+           
+            Frag_bias frag_bias[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+            gmem_bias.load(frag_bias);
+
+            __syncthreads();
+            
+            #pragma unroll
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+                #pragma unroll
+                for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
+                    acc_p[mi][ni].addf(frag_bias[ni][mi]);
+                }
+            }
+
+            // debug: 
+            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+                printf("print frag_bias: l=%d\n", l);
+
+                float2 tmp_mask1 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0]));
+                float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][0]));
+                float2 tmp_mask3 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][1]));
+                float2 tmp_mask4 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[1][0]));
+                printf("Per warp, threadIdx.x = %d, frag_bias[0] = %.6f, %.6f, frag_bias[0][0] = %.6f, %.6f\n", 
+                    threadIdx.x, tmp_mask1.x, tmp_mask1.y, tmp_mask2.x, tmp_mask2.y);
+                printf("Per warp, threadIdx.x = %d, frag_bias[0][1] = %.6f, %.6f, frag_bias[1][0] = %.6f, %.6f\n", 
+                    threadIdx.x, tmp_mask3.x, tmp_mask3.y, tmp_mask4.x, tmp_mask4.y);
+
+                #pragma unroll
+                for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
+                    #pragma unroll
+                    for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
+                        float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[mi][ki]));
+                        printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
+                            threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
+                    }
+                }
+   
+                int num_elt = frag_bias[0][0].NUM_ELTS;
+                for (int i = 0; i < num_elt; i ++) {
+                     printf("i=%d, frag_mask=%.6f, hex=%d, %f\n", i, 
+                        frag_bias[0][0].elt(i), 
+                        frag_bias[0][0].elt(i),
+                        // toFloat(frag_mask[0][0].elt(i))
+                        frag_bias[0][0].elt(i)
+                        );             
+                }
+                printf("end print frag_bias\n");
+            }
+            gmem_bias.move();
+        }
+       
 
         // debug: after add mask
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
