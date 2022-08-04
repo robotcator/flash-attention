@@ -52,15 +52,15 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
         size_t elts_per_head = STEPS * MMAS_M * MMAS_N * 8 * loop_steps;
         launch_params.elts_per_thread = elts_per_head;
 
-        printf("configuration----");
+        printf("configuration----\n");
         printf("blocksize_c %d\n", blocksize_c);
         printf("loop steps %d\n", loop_steps);
         printf("Steps %zu\n", STEPS);
         printf("Cta tile M %d\n", M);
-        printf("Cta tile MMAS_M %zu\n", MMAS_M);
-        printf("Cta tile MMAS_N %zu\n", MMAS_N);
+        printf("Mma tile MMAS_M %zu\n", MMAS_M);
+        printf("Mma tile MMAS_N %zu\n", MMAS_N);
         printf("elts_per_thread %zu\n", elts_per_head);
-        printf("configuration----");
+        printf("configuration----\n");
         return;
     }
 
@@ -86,6 +86,9 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
                 kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
         }
         dim3 grid(launch_params.params.b, launch_params.params.h);
+
+        printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+        printf("block size: %d\n", Kernel_traits::THREADS);
         // grid: b, h (batch_size = len(cu_seq_q), 16), 
         // block: 32
         // kernel<<<dim_grid, dim_block, num_bytes_in_SharedMem, stream>>>

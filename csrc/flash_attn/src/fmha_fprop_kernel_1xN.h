@@ -304,7 +304,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("og begin %d\n", begin_og);
         printf("begin %d\n", begin);
-        printf("og  step %d\n", steps_og);
+        printf("og step %d\n", steps_og);
         printf("begin %d\n", steps);
         printf("loop_step_idx %d\n", loop_step_idx);
     }
@@ -431,7 +431,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             for (int i = 0; i < 8; i ++) {
                 printf("i=%d, acc_p=%.6f \n", i, acc_p[0][0].elt(i));
             }
-            printf("\n");
             printf("end print acc_p\n");
         }
 
@@ -439,7 +438,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
                 printf(" add attn mask ====\n");
             }
-            using Frag_mask = fmha::Fragment_a<fmha::Row>;
+            // method 1
+            using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+            // method 2
+            // using Frag_mask = fmha::Fragment_a<fmha::Row>;
             // template<
             // // The type of the elements.
             // typename Data_type_,
@@ -448,29 +450,57 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             // struct Fragment_a : public Fragment<uint16_t, 8> {
             // struct Fragment_accumulator : public Fragment<float, 8> {
             Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+            
             gmem_mask.load(frag_mask);
+            // see the 463
             // acc_p.template add<Frag_mask>(frag_mask);
+            // acc_p.template add<float, Frag_mask>(frag_mask);
             // acc_p.add(frag_mask);
             // mask tranpose or not
             __syncthreads();
-
             
             for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
                 for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                    acc_p[mi][ni].template add<float, Frag_mask>(frag_mask[ni][mi]);
+                    // acc_p[mi][ni].template addf<Frag_mask, elem_type>(frag_mask[ni][mi]);
+                    // acc_p[mi][ni].add(frag_mask[ni][mi]);
+                    acc_p[mi][ni].addf(frag_mask[ni][mi]);
                 }
             }
 
             // debug: 
             if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-                printf("print frag_mask %d\n", l);
-                // for (int i = 0; i < frag_mask[0][0].NUM_ELTS; i ++) {
-                for (int i = 0; i < 8; i ++) {
-                    printf("i=%d, frag_mask=%.6f, %u\n", i, 
-                        frag_mask[0][0].elt(i), 
-                        frag_mask[0][0].elt(i));
+                printf("print frag_mask: l=%d\n", l);
+
+                float2 tmp_mask1 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0]));
+                float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0][0]));
+                float2 tmp_mask3 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0][1]));
+                float2 tmp_mask4 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[1][0]));
+                printf("Per warp, threadIdx.x = %d, frag_mask[0] = %.6f, %.6f, frag_mask[0][0] = %.6f, %.6f\n", 
+                    threadIdx.x, tmp_mask1.x, tmp_mask1.y, tmp_mask2.x, tmp_mask2.y);
+                printf("Per warp, threadIdx.x = %d, frag_mask[0][1] = %.6f, %.6f, frag_mask[1][0] = %.6f, %.6f\n", 
+                    threadIdx.x, tmp_mask3.x, tmp_mask3.y, tmp_mask4.x, tmp_mask4.y);
+
+                #pragma unroll
+                for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
+                    #pragma unroll
+                    for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
+                        float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[mi][ki]));
+                        printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
+                            threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
+                    }
                 }
-                printf("\n");
+   
+                int num_elt = frag_mask[0][0].NUM_ELTS;
+                // for (int i = 0; i < frag_mask[0][0].NUM_ELTS; i ++) {
+                // sometime correct, sometime wrong
+                for (int i = 0; i < num_elt; i ++) {
+                     printf("i=%d, frag_mask=%.6f, hex=%d, %f\n", i, 
+                        frag_mask[0][0].elt(i), 
+                        frag_mask[0][0].elt(i),
+                        // toFloat(frag_mask[0][0].elt(i))
+                        frag_mask[0][0].elt(i)
+                        );             
+                }
                 printf("end print frag_mask\n");
             }
             gmem_mask.move();
@@ -502,23 +532,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
-
-        // if (is_thread_0()) {
-        //     for (int i_m = 0; i_m < Mma_tile_p::MMAS_M * 2; i_m ++){
-        //         printf("after_mask: loop_step_idx = %03d, l = %03d, threadIdx.x = %03d, threadIdx.y = %03d, i_m = %01d, accp ele(0) = %f,  ele(1) = %f, ele(2) = %f, ele(3) = %f, ele(4) = %f, ele(5) = %f, ele(6) = %f, ele(7) = %f \n",
-        //                     loop_step_idx, l, threadIdx.x, threadIdx.y, i_m,
-        //                     softmax.elt_[i_m][0],
-        //                     softmax.elt_[i_m][1],
-        //                     softmax.elt_[i_m][2],
-        //                     softmax.elt_[i_m][3],
-        //                     softmax.elt_[i_m][4],
-        //                     softmax.elt_[i_m][5],
-        //                     softmax.elt_[i_m][6],
-        //                     softmax.elt_[i_m][7]
-        //         );
-        //     }
-        // }
-
 
         // Apply the mask. 
         // this impl is more like padding
@@ -610,6 +623,30 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         static_assert(Mma_tile_o::MMAS_K == Mma_tile_p::MMAS_N);
         softmax.template pack<elem_type>(frag_p);
         // ? pack 
+
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+            #pragma unroll
+            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
+                #pragma unroll
+                for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
+                    // 1st row - 4 elements per row.
+                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
+                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
+                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
+                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
+
+                    // 2nd row - 4 elements per row.
+                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
+                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
+                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
+                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
+
+                    printf("softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
+                    printf("softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
+                }
+            }
+        }
+
         if (Return_softmax) {
             gmem_s.store(frag_p, mask);
             gmem_s.move();
