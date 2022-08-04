@@ -126,8 +126,6 @@ struct Gmem_tile_qkv {
             char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
             if( (row_ + ii * ROWS_PER_LDG) < min(ROWS, actual_seqlen) ) {
                 fmha::stg(ptr_, data[ii]);
-                // stg function, inline __device__ void stg(void *ptr, uint2 val)
-                // *reinterpret_cast<uint8_t*>(ptr) = val;
             }
         }
     }

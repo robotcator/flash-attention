@@ -305,10 +305,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     }
     gmem_softmax_lse.move(begin);
     
-    // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-    //    printf("begin = %d, steps = %d\n", begin, steps);
-    // }
-
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 
     // Allocate the global memory tile loader for K.
@@ -410,6 +406,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // Do this part of P = Q * K^T.
         gemm_q_k(acc_p);
         // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
+
+        // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
+        //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
+        // }
 
         if constexpr (has_attn) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
