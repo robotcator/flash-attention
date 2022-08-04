@@ -114,23 +114,6 @@ struct Gmem_tile_qkv {
         #pragma unroll
         for( int ii = 0; ii < LDGS; ++ii ) {
             fct.load(ii, preds[ii]);
-            // // The fetch registers. fetch_
-            // -> inline __device__ void load(int ii, bool p)
-            // -> ldg(fetch_[ii], ptrs_[ii]);
-            // -> inline __device__ void ldg(uint4 &dst, const void *ptr) {
-            //     dst = *reinterpret_cast<const uint4*>(ptr);
-            // }
-        }
-    }
-
-    // print data.
-    template<typename elem_type>
-    inline __device__ void print() {
-        // int row_ = tidx_ / THREADS_PER_ROW;
-        printf("print LDGS %d\n", LDGS);
-        for( int ii = 0; ii < LDGS; ++ii ) {
-            // char *ptr_ = ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes;
-            printf("data: %f\n", *(elem_type *)(ptr + (uint32_t)ii * ROWS_PER_LDG * row_stride_in_bytes));
         }
     }
 
@@ -402,8 +385,6 @@ struct Gmem_tile_mma_s : public Base {
                 dst.w = frag[ni][mi].reg(3);
                 if( mask.any_valid(mi, ni) ) {
                     Base::store(dst, mi, ni);
-                    // uint32_t offset = (mi * MMAS_N + ni) * BYTES_PER_ROW;
-                    // fmha::stg(ptr_ + offset, data);
                 }
             }
         }

@@ -296,7 +296,6 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
                      attn_bias ? attn_bias->data_ptr() : nullptr
                      );
 
-    printf ("debug fmha api start test\n");
     run_fmha_fp16_sm80(launch_params, /*configure=*/ true);
     // number of times random will be generated per thread, to offset philox counter in thc random
     // state

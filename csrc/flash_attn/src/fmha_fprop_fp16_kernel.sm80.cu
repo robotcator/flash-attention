@@ -51,20 +51,9 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
         constexpr size_t MMAS_N = Mma_tile_p::MMAS_N;
         size_t elts_per_head = STEPS * MMAS_M * MMAS_N * 8 * loop_steps;
         launch_params.elts_per_thread = elts_per_head;
-
-        printf("configuration----\n");
-        printf("blocksize_c %d\n", blocksize_c);
-        printf("loop steps %d\n", loop_steps);
-        printf("Steps %zu\n", STEPS);
-        printf("Cta tile M %d\n", M);
-        printf("Mma tile MMAS_M %zu\n", MMAS_M);
-        printf("Mma tile MMAS_N %zu\n", MMAS_N);
-        printf("elts_per_thread %zu\n", elts_per_head);
-        printf("configuration----\n");
         return;
     }
 
-    printf("deub kernel sm80\n");
     constexpr int smem_size_softmax_lse = Kernel_traits::Smem_dp_sum::BYTES_PER_TILE;
     // Don't need smem_size_softmax_lse if we're not looping
     const int smem_size = fmha::get_dynamic_smem_size<Kernel_traits>()
@@ -185,14 +174,6 @@ void run_fmha_fp16_sm80(Launch_params<FMHA_fprop_params> &launch_params,
         if (launch_params.params.d == 16) {
             if( launch_params.params.seqlen_k == 128 ) {
                 using Kernel_traits = FMHA_kernel_traits<128, 16, 16, 1, 4, 0x08u, elem_type>;
-                // xh: template<int S, int D, int STEP, int WARPS_M, int WARPS_N, ...
-                // -> using Cta_tile_p = fmha::Cta_tile_extd<STEP, S, D, WARPS_M, WARPS_N, 1>;
-                // -> using Cta_tile_extd = Cta_tile_<M, N, K, WARPS_M, WARPS_N, WARPS_K>;
-                // -> static constexpr int M = M_(STEP 16), N = N_(s 128), K = K_ (D 16);
-                // ->  // The number of warps.
-                // static constexpr int WARPS_M = WARPS_M_, WARPS_N = WARPS_N_, WARPS_K = WARPS_K_;
-                // WARPS_M is 1, WARPS_N is 4
-                // STEP = 16 ???
                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
             } else if( launch_params.params.seqlen_k == 256 ) {
                 using Kernel_traits = FMHA_kernel_traits<256, 16, 16, 1, 4, 0x08u, elem_type>;

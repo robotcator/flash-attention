@@ -260,12 +260,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // Allocate the global memory tile loader for Q.
     Gmem_tile_q gmem_q(params.q_ptr, params.q_row_stride_in_elts, params.q_head_stride_in_elts, binfo, tidx, true);
-    // Gmem_tile_q is fmha::Gmem_tile_qkv<Cta_tile_p, fmha::BITS_PER_ELEMENT_A, STEP, D>;
-    //  Gmem_tile_q is fmha::Gmem_tile_qkv, 取数逻辑在gmem_tile.h
-    // 指针q_ptr引入数据，构造 csrc/flash_attn/src/fmha/gmem_tile.h:67
-    // row_stide is dim0, head_strid is dim1
-    // constexpr int BITS_PER_ELEMENT_A = sizeof(A_type) * 8;
-    // using A_type = uint16_t;
 
     // Allocate the global memory tile loader for O.
     Gmem_tile_o gmem_o(params.o_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
@@ -282,7 +276,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
-    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_mask;
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
     // conctructor
     Gmem_tile_bias gmem_bias(params, binfo, tidx);
     // TODO: load fun as s
@@ -292,12 +286,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Wind gmem tiles to the correct position.
     static_assert(Cta_tile_p::N % Cta_tile_p::M == 0);
     const int begin_og = begin;
-    // begin is 0
     begin = Is_causal ? std::max(begin, loop_step_idx * Cta_tile_p::N / Cta_tile_p::M) : begin;
     const int steps_og = steps;
     steps -= begin - begin_og;
-    // begin - begin_og = 0
-    // steps -= 0
     gmem_q.move(begin);
     gmem_o.move(begin);
     gmem_o_tmp.move(begin);
@@ -312,15 +303,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // TODO: bias move 
         gmem_bias.move(begin);
     }
-
-    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-        printf("og begin %d\n", begin_og);
-        printf("begin %d\n", begin);
-        printf("og step %d\n", steps_og);
-        printf("begin %d\n", steps);
-        printf("loop_step_idx %d\n", loop_step_idx);
-    }
-
     gmem_softmax_lse.move(begin);
     
     // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
@@ -328,8 +310,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // }
 
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
-    // mask in used pad actually, actual_seqlen_k is params.cu_seqlens_k[bidb + 1] - params.cu_seqlens_k[bidb]
-    // why works for the difference output ?
 
     // Allocate the global memory tile loader for K.
     Gmem_tile_k gmem_k(params.k_ptr, params.k_row_stride_in_elts, params.k_head_stride_in_elts, binfo, tidx, false);
@@ -389,12 +369,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     __syncthreads();
 
-    // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-    //    printf("Gemm load k...\n");
-    //    // https://stackoverflow.com/questions/7397934/calling-template-function-within-template-class
-    //    gmem_k.template print</*typename=*/elem_type>();
-    // }
-
     // Load the fragments for Q.
     gemm_q_k.load_q();
 
@@ -434,101 +408,28 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         fmha::Clear_accumulator<typename fmha::Accumulator_type, Cta_tile_p::WARPS_K>::apply(acc_p);
 
         // Do this part of P = Q * K^T.
-        // ? M / N 参数？
         gemm_q_k(acc_p);
         // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
-        // move(1)
-
-        // debug: before add mask
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
-            printf("before mask print acc_p\n");
-            // for (int i = 0; i < acc_p[0][0].NUM_ELTS; i ++) {
-            for (int i = 0; i < 8; i ++) {
-                printf("i=%d, acc_p=%.6f \n", i, acc_p[0][0].elt(i));
-            }
-            printf("end print acc_p\n");
-        }
 
         if constexpr (has_attn) {
-            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-                printf(" add attn mask ====\n");
-            }
-            // method 1
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
-            // method 2
-            // using Frag_mask = fmha::Fragment_a<fmha::Row>;
-            // template<
-            // // The type of the elements.
-            // typename Data_type_,
-            // // The number of elements.
-            // int NUM_ELTS_,
-            // struct Fragment_a : public Fragment<uint16_t, 8> {
-            // struct Fragment_accumulator : public Fragment<float, 8> {
             Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
 
             gmem_mask.load(frag_mask);
-            // see the 463
-            // acc_p.template add<Frag_mask>(frag_mask);
-            // acc_p.template add<float, Frag_mask>(frag_mask);
-            // acc_p.add(frag_mask);
-            // mask tranpose or not
+            // do we need sync ?
             __syncthreads();
             
             #pragma unroll
             for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
                 #pragma unroll
                 for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                    // acc_p[mi][ni].template addf<Frag_mask, elem_type>(frag_mask[ni][mi]);
-                    // acc_p[mi][ni].add(frag_mask[ni][mi]);
                     acc_p[mi][ni].addf(frag_mask[ni][mi]);
                 }
-            }
-
-            // debug: 
-            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-                printf("print frag_mask: l=%d\n", l);
-
-                float2 tmp_mask1 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0]));
-                float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0][0]));
-                float2 tmp_mask3 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[0][1]));
-                float2 tmp_mask4 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[1][0]));
-                printf("Per warp, threadIdx.x = %d, frag_mask[0] = %.6f, %.6f, frag_mask[0][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask1.x, tmp_mask1.y, tmp_mask2.x, tmp_mask2.y);
-                printf("Per warp, threadIdx.x = %d, frag_mask[0][1] = %.6f, %.6f, frag_mask[1][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask3.x, tmp_mask3.y, tmp_mask4.x, tmp_mask4.y);
-
-                #pragma unroll
-                for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
-                    #pragma unroll
-                    for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
-                        float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_mask[mi][ki]));
-                        printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
-                            threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
-                    }
-                }
-   
-                int num_elt = frag_mask[0][0].NUM_ELTS;
-                // for (int i = 0; i < frag_mask[0][0].NUM_ELTS; i ++) {
-                // sometime correct, sometime wrong
-                for (int i = 0; i < num_elt; i ++) {
-                     printf("i=%d, frag_mask=%.6f, hex=%d, %f\n", i, 
-                        frag_mask[0][0].elt(i), 
-                        frag_mask[0][0].elt(i),
-                        // toFloat(frag_mask[0][0].elt(i))
-                        frag_mask[0][0].elt(i)
-                        );             
-                }
-                printf("end print frag_mask\n");
             }
             gmem_mask.move();
         }
 
-
         if constexpr (has_bias) {
-            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-                printf(" add attn mask ====\n");
-            }
-            // method 1
             using Frag_bias = fmha::Fragment_c<fmha::Row, elem_type>;
            
             Frag_bias frag_bias[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
@@ -543,54 +444,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
                     acc_p[mi][ni].addf(frag_bias[ni][mi]);
                 }
             }
-
-            // debug: 
-            if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-                printf("print frag_bias: l=%d\n", l);
-
-                float2 tmp_mask1 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0]));
-                float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][0]));
-                float2 tmp_mask3 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][1]));
-                float2 tmp_mask4 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[1][0]));
-                printf("Per warp, threadIdx.x = %d, frag_bias[0] = %.6f, %.6f, frag_bias[0][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask1.x, tmp_mask1.y, tmp_mask2.x, tmp_mask2.y);
-                printf("Per warp, threadIdx.x = %d, frag_bias[0][1] = %.6f, %.6f, frag_bias[1][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask3.x, tmp_mask3.y, tmp_mask4.x, tmp_mask4.y);
-
-                #pragma unroll
-                for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
-                    #pragma unroll
-                    for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
-                        float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[mi][ki]));
-                        printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
-                            threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
-                    }
-                }
-   
-                int num_elt = frag_bias[0][0].NUM_ELTS;
-                for (int i = 0; i < num_elt; i ++) {
-                     printf("i=%d, frag_mask=%.6f, hex=%d, %f\n", i, 
-                        frag_bias[0][0].elt(i), 
-                        frag_bias[0][0].elt(i),
-                        // toFloat(frag_mask[0][0].elt(i))
-                        frag_bias[0][0].elt(i)
-                        );             
-                }
-                printf("end print frag_bias\n");
-            }
             gmem_bias.move();
-        }
-       
-
-        // debug: after add mask
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
-            printf("after mask print acc_p\n");
-            // for (int i = 0; i < acc_p[0][0].NUM_ELTS; i ++) {
-            for (int i = 0; i < 8; i ++) {
-                printf("i=%d, acc_p=%.6f\n", i, acc_p[0][0].elt(i));
-            }
-            printf("\n");
-            printf("end print acc_p\n");
         }
 
         uint4 out[Gmem_tile_o::STGS_PER_LOOP];
@@ -698,30 +552,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         static_assert(Mma_tile_o::MMAS_M == Mma_tile_p::MMAS_M);
         static_assert(Mma_tile_o::MMAS_K == Mma_tile_p::MMAS_N);
         softmax.template pack<elem_type>(frag_p);
-        // ? pack 
-
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-            #pragma unroll
-            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
-                #pragma unroll
-                for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-        }
 
         if (Return_softmax) {
             gmem_s.store(frag_p, mask);
@@ -894,14 +724,6 @@ inline __device__ void device_1xN_loop(const Params &params) {
     const int tidx = threadIdx.x;
 
     const int tidx_global = (bidb * params.h + bidh) * blockDim.x * 2 + tidx;
-    // tidx_global = (blockIdx.x * params.h + blockIdx.y) * blockDim.x * 2 + threadIdx.x;
-    // what is mean of 2?
-    // if (tidx == 0) {
-    //     printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
-    // }
-    // if (tidx == 1) {
-    //     printf("blockIdx.x: %d, blockIdx.y: %d, threadIdx.x: %d, tidx_global: %d\n", bidb, bidh, tidx, tidx_global);
-    // }
 
     auto seeds = at::cuda::philox::unpack(params.philox_args);
     Philox ph0(std::get<0>(seeds), tidx_global, std::get<1>(seeds));
@@ -910,9 +732,7 @@ inline __device__ void device_1xN_loop(const Params &params) {
     const int STEPS = (params.seqlen_q + M - 1) / M;
 
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
-    // Tc, loop over k in algo2 line 6, blocksize_c in line 4
     if (params.seqlen_k == blocksize_c) {
-        // inline __device__ void device_1xN_(const Params &params, const int bidb, const int bidh, int begin, int steps, Prng &ph0, Prng &ph1, const int loop_step_idx) {
         fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
     } else {
         const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;

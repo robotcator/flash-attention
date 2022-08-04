@@ -148,12 +148,6 @@ ext_modules.append(
             Path(this_dir) / 'csrc' / 'flash_attn' / 'src',
             Path(this_dir) / 'csrc' / 'flash_attn' / 'cutlass' / 'include',
         ],
-        # add depends for modification of header file
-        depends = [
-            Path(this_dir) / 'csrc' / 'flash_attn',
-            Path(this_dir) / 'csrc' / 'flash_attn' / 'src',
-            Path(this_dir) / 'csrc' / 'flash_attn' / 'cutlass' / 'include',
-        ],
     )
 )
 

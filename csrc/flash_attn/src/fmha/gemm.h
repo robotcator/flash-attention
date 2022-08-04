@@ -115,12 +115,6 @@ struct alignas(static_cast<int>(Base_::ALIGNMENT)) Fragment : public Base_ {
         return reinterpret_cast<Data_type_*>(&this->regs_[0])[ii];
     }
 
-    // xh: Immutable access to the elements and cast to elem_type.
-    // template< typename elem_type >
-    // inline __device__ elem_type& elt(int ii) {
-    //     return reinterpret_cast<elem_type*>(&this->regs_[0])[ii];
-    // }
-
     // Immutable access to the elements with a cast.
     template< typename Cast_type >
     inline __device__ const Cast_type& elt_as(int ii) const {
@@ -194,6 +188,7 @@ inline float toFloat(__nv_bfloat16 a) {
     return __bfloat162float(a);
 }
 #endif
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 struct Fragment_accumulator : public Fragment<float, 8> {
@@ -211,32 +206,12 @@ struct Fragment_accumulator : public Fragment<float, 8> {
 
     template< typename Other_fragment_ >
     inline __device__ void addf(const Other_fragment_ &other) {
+        // elt or reg?
         #pragma unroll
         for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
             this->elt(ii) = this->elt(ii) +  toFloat(other.elt(ii));
         }
     }
-
-    // cause invalid redeclaration of member function template
-    // template<typename Other_fragment_, typename elem_type >
-    // inline __device__ void addf(const Other_fragment_ &other);
-
-    // // 特化
-    // template<typename Other_fragment_>
-    // inline __device__ void addf<Other_fragment_, __half>(const Other_fragment_ &other) {
-    //     for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
-    //         this->elt(ii) = this->elt(ii) +  __half2float(other.elt(ii));
-    //     }
-    // }
-
-    // #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    // template<typename Other_fragment_>
-    // inline __device__ void addf<Other_fragment_, __nv_bfloat16>(const Other_fragment_ &other) {
-    //     for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
-    //         this->elt(ii) = this->elt(ii) +  __bfloat162float(other.elt(ii));
-    //     }
-    // }
-    // #endif
 
     inline __device__ void mul_(const float other) {
         for( int ii = 0; ii < Base::NUM_ELTS; ++ii ) {
