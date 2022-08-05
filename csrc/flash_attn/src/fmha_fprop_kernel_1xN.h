@@ -282,7 +282,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
-    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_mask;
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
     // conctructor
     Gmem_tile_bias gmem_bias(params, binfo, tidx);
     // TODO: load fun as s
@@ -548,19 +548,13 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
                 printf("print frag_bias: l=%d\n", l);
 
-                float2 tmp_mask1 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0]));
-                float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][0]));
-                float2 tmp_mask3 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[0][1]));
-                float2 tmp_mask4 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[1][0]));
-                printf("Per warp, threadIdx.x = %d, frag_bias[0] = %.6f, %.6f, frag_bias[0][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask1.x, tmp_mask1.y, tmp_mask2.x, tmp_mask2.y);
-                printf("Per warp, threadIdx.x = %d, frag_bias[0][1] = %.6f, %.6f, frag_bias[1][0] = %.6f, %.6f\n", 
-                    threadIdx.x, tmp_mask3.x, tmp_mask3.y, tmp_mask4.x, tmp_mask4.y);
-
                 #pragma unroll
                 for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
                     #pragma unroll
                     for( int ki = 0; ki < Mma_tile_o::MMAS_K; ++ki ) {
+                        // float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[mi][ki]));
+                        // printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
+                        //     threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
                         float2 tmp_mask2 = __half22float2(reinterpret_cast<__half2 &>(frag_bias[mi][ki]));
                         printf("Per warp, threadIdx.x = %d, mi=%d, ni=%d, frag_mask[mi][ni]= %.6f, %.6f\n", 
                             threadIdx.x, mi, ki, tmp_mask2.x, tmp_mask2.y);
