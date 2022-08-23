@@ -31,6 +31,10 @@
 
 #include "fmha.h"
 
+#ifdef DDEBUG_PRINT
+#include "fmha_api.h"
+#endif
+
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
 
 
@@ -101,6 +105,26 @@ void set_params_fprop(FMHA_fprop_params &params,
     // attn mask & bias
     params.attn_mask_ptr = attn_mask;
     params.attn_bias_ptr = attn_bias;
+
+
+#ifdef DEBUG_PRINT
+    printf("========================================\n");
+    printf("params.q_row_stride_in_elts = %d \n", params.q_row_stride_in_elts);
+    printf("params.k_row_stride_in_elts = %d \n", params.k_row_stride_in_elts);
+    printf("params.v_row_stride_in_elts = %d \n", params.v_row_stride_in_elts);
+    printf("params.q_head_stride_in_elts = %d \n", params.q_head_stride_in_elts);
+    printf("params.k_head_stride_in_elts = %d \n", params.k_head_stride_in_elts);
+    printf("params.v_head_stride_in_elts = %d \n", params.v_head_stride_in_elts);
+    printf("params.h = %d \n", params.h);
+    printf("params.b = %d \n", params.b);
+    printf("params.seqlen_q (max seq) = %d \n", params.seqlen_q);
+    printf("params.seqlen_k (max seq) = %d \n", params.seqlen_k); 
+    printf("params.d = %d \n", params.d);
+    printf("params.o_row_stride_in_elts = %d \n", params.o_row_stride_in_elts);
+    printf("params.o_head_stride_in_elts = %d \n", params.o_head_stride_in_elts);
+    printf("params.s_stride_in_bytes = %d \n", params.s_stride_in_bytes);
+    printf("========================================\n");
+#endif
 
 
     // Set the different scale values.
@@ -736,7 +760,7 @@ mha_bwd_block(const at::Tensor &dout,  // total x num_heads, x head_size
     return { dq, dk, dv, softmax_d };
 }
 
-
+#if !defined(DEBUG_USING_NVCC)
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "Fused Multi-head Self-attention";
     m.def("fwd", &mha_fwd, "Forward pass");
@@ -744,3 +768,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("fwd_block", &mha_fwd_block, "Forward pass (blocksparse)");
     m.def("bwd_block", &mha_bwd_block, "Backward pass (blocksparse)");
 }
+#endif

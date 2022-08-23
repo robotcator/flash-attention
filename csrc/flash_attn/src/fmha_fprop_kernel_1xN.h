@@ -174,6 +174,7 @@ struct Gemm_Q_K<Kernel_traits, false, elem_type_> : public Gemm_Q_K_base<Kernel_
     __device__ inline void operator()(Acc (&acc_p)[M][N]){
         // Do this part of P^T = (Q * K^T)^T.
         #pragma unroll
+        // how to handle k
         for( int ki = 1; ki < Mma_tile_p::MMAS_K; ++ki ) {
             // Trigger the load from shared memory for the next series of Q values.
             Base::smem_q.load(Base::frag_q[ki & 1], ki);
@@ -246,6 +247,86 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     using Softmax = fmha::Softmax<Cta_tile_p, Kernel_traits>;
 
+#ifdef DEBUG_PRINT
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+        // Cta_tile_p
+        printf("Cta_tile_p::M = %d, Cta_tile_p::N = %d, Cta_tile_p::K = %d\n",
+                Cta_tile_p::M, Cta_tile_p::N, Cta_tile_p::K);
+        printf("Cta_tile_p::WARPS_M = %d, Cta_tile_p::WARPS_N = %d, Cta_tile_p::WARPS_K = %d\n",
+                Cta_tile_p::WARPS_M, Cta_tile_p::WARPS_N, Cta_tile_p::WARPS_K);
+        printf("Cta_tile_p::WARPS_PER_CTA = %d, Cta_tile_p::THREADS_PER_WARP = %d, Cta_tile_p::THREADS_PER_CTA = %d\n",
+                Cta_tile_p::WARPS_PER_CTA, Cta_tile_p::THREADS_PER_WARP, Cta_tile_p::THREADS_PER_CTA);
+        printf("\n");
+
+        // Cta_tile_o
+        printf("Cta_tile_o::M = %d, Cta_tile_o::N = %d, Cta_tile_o::K = %d\n",
+                Cta_tile_o::M, Cta_tile_o::N, Cta_tile_o::K);
+        printf("Cta_tile_o::WARPS_M = %d, Cta_tile_o::WARPS_N = %d, Cta_tile_o::WARPS_K = %d\n",
+                Cta_tile_o::WARPS_M, Cta_tile_o::WARPS_N, Cta_tile_o::WARPS_K);
+        printf("Cta_tile_o::WARPS_PER_CTA = %d, Cta_tile_o::THREADS_PER_WARP = %d, Cta_tile_o::THREADS_PER_CTA = %d\n",
+                Cta_tile_o::WARPS_PER_CTA, Cta_tile_o::THREADS_PER_WARP, Cta_tile_o::THREADS_PER_CTA);
+        printf("\n");
+
+        // Mma_tile_p
+        printf("Mma_tile_p::MMAS_M = %d, Mma_tile_p::MMAS_N = %d, Mma_tile_p::MMAS_K = %d\n",
+                Mma_tile_p::MMAS_M, Mma_tile_p::MMAS_N, Mma_tile_p::MMAS_K);
+        // The number of elements computed with a single CTA-MMA.
+        printf("Mma_tile_p::M_PER_MMA_PER_CTA = %d, Mma_tile_p::N_PER_MMA_PER_CTA = %d, Mma_tile_p::K_PER_MMA_PER_CTA = %d\n",
+                Mma_tile_p::M_PER_MMA_PER_CTA, Mma_tile_p::N_PER_MMA_PER_CTA, Mma_tile_p::K_PER_MMA_PER_CTA);
+        printf("\n");
+
+        // Mma_tile_o
+        printf("Mma_tile_o::MMAS_M = %d, Mma_tile_o::MMAS_N = %d, Mma_tile_o::MMAS_K = %d\n",
+                Mma_tile_o::MMAS_M, Mma_tile_o::MMAS_N, Mma_tile_o::MMAS_K);
+        printf("Mma_tile_o::M_PER_MMA_PER_CTA = %d, Mma_tile_o::N_PER_MMA_PER_CTA = %d, Mma_tile_o::K_PER_MMA_PER_CTA = %d\n",
+                Mma_tile_o::M_PER_MMA_PER_CTA, Mma_tile_o::N_PER_MMA_PER_CTA,  Mma_tile_o::K_PER_MMA_PER_CTA);
+        printf("\n");
+
+        // Gmem_tile_q
+        printf("Gmem_tile_q::BYTES_PER_ELEMENT = %d, Gmem_tile_q::ROWS = %d, Gmem_tile_q::COLS = %d,  Gmem_tile_q::LDGS = %d, Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
+            Gmem_tile_q::BYTES_PER_ELEMENT, Gmem_tile_q::ROWS, Gmem_tile_q::COLS,  Gmem_tile_q::LDGS,
+            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
+        printf("\n");
+
+        // Gmem_tile_k
+        printf("Gmem_tile_k::BYTES_PER_ELEMENT = %d, Gmem_tile_k::ROWS = %d, Gmem_tile_k::COLS = %d,  Gmem_tile_k::LDGS = %d， Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
+            Gmem_tile_k::BYTES_PER_ELEMENT, Gmem_tile_k::ROWS, Gmem_tile_k::COLS,  Gmem_tile_k::LDGS,
+            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
+        printf("\n");
+
+        // Gmem_tile_v
+        printf("Gmem_tile_v::BYTES_PER_ELEMENT = %d, Gmem_tile_v::ROWS = %d, Gmem_tile_v::COLS = %d,  Gmem_tile_v::LDGS = %d, Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
+            Gmem_tile_v::BYTES_PER_ELEMENT, Gmem_tile_v::ROWS, Gmem_tile_v::COLS,  Gmem_tile_v::LDGS,
+            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
+        printf("\n");
+
+        // Gmem_tile_o
+        printf("Gmem_tile_o::ROWS = %d, Gmem_tile_o::COLS = %d, Gmem_tile_o::STGS = %d,  Gmem_tile_o::STGS_PER_LOOP = %d\n", 
+            Gmem_tile_o::ROWS, Gmem_tile_o::COLS, Gmem_tile_o::STGS, Gmem_tile_o::STGS_PER_LOOP);
+        printf("\n");
+
+        // Gmem_tile_s
+        printf("Gmem_tile_s::M = %d, Gmem_tile_s::N = %d\n",
+            Gmem_tile_s::M, Gmem_tile_s::N);
+        printf("\n");
+
+        // Gmem_softmax_sum
+        printf("Gmem_softmax_sum::MMAS_M = %d, Gmem_softmax_sum::ROWS = %d\n",
+            Gmem_softmax_sum::MMAS_M, Gmem_softmax_sum::ROWS);
+        printf("\n");
+
+        // Gemm1
+        printf("Gemm1::SHARE_SMEM_FOR_K_AND_V = %d, Gemm1::SMEM_OFFSET_O = %d, Gemm1::SMEM_OFFSET_SOFTMAX = %d, Gemm1::SMEM_OFFSET_V = %d, Gemm1::SMEM_OFFSET_V = %d\n",
+            Gemm1::SHARE_SMEM_FOR_K_AND_V, Gemm1::SMEM_OFFSET_O, Gemm1::SMEM_OFFSET_SOFTMAX, Gemm1::SMEM_OFFSET_V, Gemm1::SMEM_OFFSET_V);
+        printf("\n");
+
+        // Softmax
+        printf("Softmax::WARPS_M = %d, Softmax::WARPS_N = %d, Softmax::MMAS_M = %d, Softmax::MMAS_N = %d\n",
+            Softmax::WARPS_M, Softmax::WARPS_N, Softmax::MMAS_M, Softmax::MMAS_N);
+        printf("\n");
+    }
+#endif
+
     // Shared memory.
     extern __shared__ char smem_[];
 
@@ -276,9 +357,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
-    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-    // conctructor
-    Gmem_tile_bias gmem_bias(params, binfo, tidx);
+    // using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+    // // conctructor
+    // Gmem_tile_bias gmem_bias(params, binfo, tidx);
     // TODO: load fun as s
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
@@ -294,15 +375,18 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
     
-    if constexpr (has_attn) {
+    // if constexpr (has_attn) {
+    if (!(params.attn_mask_ptr == nullptr)) {
         // TODO: mask move 
         gmem_mask.move(begin);
     }
 
-    if constexpr (has_bias) {
-        // TODO: bias move 
-        gmem_bias.move(begin);
-    }
+    // // if constexpr (has_bias) {
+    // if (!(params.attn_bias_ptr == nullptr)) {
+    //     // TODO: bias move 
+    //     gmem_bias.move(begin);
+    // }
+
     gmem_softmax_lse.move(begin);
     
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
@@ -325,13 +409,15 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
         if (Return_softmax) { gmem_s.move(loop_step_idx * steps_og); }
-        if constexpr (has_attn) {
-            // TODO: mask move as s
-            gmem_mask.move(loop_step_idx * steps_og);
-        }
-        if constexpr (has_bias) {
-            gmem_bias.move(loop_step_idx * steps_og);
-        }
+        // if constexpr (has_attn) {
+        // if (!(params.attn_mask_ptr == nullptr)) {
+        //     // TODO: mask move as s, with col move
+        //     gmem_mask.move(loop_step_idx * steps_og);
+        // }
+        // // if constexpr (has_bias) {
+        // if (!(params.attn_bias_ptr == nullptr)) {
+        //     gmem_bias.move(loop_step_idx * steps_og);
+        // }
     }
 
     // Trigger the loads for K.
@@ -340,6 +426,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_q.load();
     // Trigger the loads for V.
     gmem_v.load();
+
+    using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+    Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+    gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
 
     if (!Is_first) { __syncthreads(); }
 
@@ -411,41 +501,55 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
         // }
 
-        if constexpr (has_attn) {
-            using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
-            Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-
-            gmem_mask.load(frag_mask);
-            // do we need sync ?
-            __syncthreads();
-            
-            #pragma unroll
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
-                #pragma unroll
-                for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                    acc_p[mi][ni].addf(frag_mask[ni][mi]);
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
+            for (int ii = 0; ii < Mma_tile_p::MMAS_M; ii ++) {
+                for (int jj = 0; jj < Mma_tile_p::MMAS_N; jj ++) {
+                    for (int kk = 0; kk < acc_p[ii][jj].NUM_ELTS; kk ++) {
+                        printf("ii=%d, jj=%d, kk=%d, acc_p=%.6f\n", ii, jj, kk, acc_p[ii][jj].elt(kk));
+                    }
                 }
             }
-            gmem_mask.move();
         }
+#endif
 
-        if constexpr (has_bias) {
-            using Frag_bias = fmha::Fragment_c<fmha::Row, elem_type>;
+        // if constexpr (has_attn) {
+        // if (!(params.attn_mask_ptr == nullptr)) {
+        //     using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+        //     Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+
+        //     gmem_mask.load(frag_mask);
+        //     // do we need sync ?
+        //     __syncthreads();
+            
+        //     #pragma unroll
+        //     for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+        //         #pragma unroll
+        //         for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
+        //             acc_p[mi][ni].addf(frag_mask[ni][mi]);
+        //         }
+        //     }
+        //     gmem_mask.move();
+        // }
+
+        // if constexpr (has_bias) {
+        // if (!(params.attn_bias_ptr == nullptr)) {
+        //     using Frag_bias = fmha::Fragment_c<fmha::Row, elem_type>;
            
-            Frag_bias frag_bias[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-            gmem_bias.load(frag_bias);
+        //     Frag_bias frag_bias[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
+        //     gmem_bias.load(frag_bias);
 
-            __syncthreads();
+        //     __syncthreads();
             
-            #pragma unroll
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
-                #pragma unroll
-                for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-                    acc_p[mi][ni].addf(frag_bias[ni][mi]);
-                }
-            }
-            gmem_bias.move();
-        }
+        //     #pragma unroll
+        //     for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
+        //         #pragma unroll
+        //         for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
+        //             acc_p[mi][ni].addf(frag_bias[ni][mi]);
+        //         }
+        //     }
+        //     gmem_bias.move();
+        // }
 
         uint4 out[Gmem_tile_o::STGS_PER_LOOP];
         if (!Is_first) { gmem_o_tmp.load(out, 0); }
@@ -481,7 +585,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         if (!Is_first) {
             smem_softmax_lse.store_pair(p_prev_lse, l % 2);
             // for (int mi = 0; mi < Mma_tile_p::MMAS_M * 2; mi++) { p_max[mi] = p_prev_lse[mi]; }
-            for (int mi = 0; mi < Mma_tile_p::MMAS_M * 2; mi++) { p_max[mi] = p_prev_lse[mi] / params.scale_bmm1f; }
+            for (int mi = 0; mi < Mma_tile_p::MMAS_M * 2; mi++) { 
+                p_max[mi] = p_prev_lse[mi] / params.scale_bmm1f; 
+            }
         }
 
         // Trigger the load for the next LSE values.
@@ -539,6 +645,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // // Finalize softmax on the accumulators of P^T.
         // softmax.scale(p_sum);
+        
 
         constexpr bool encode_dropout_in_sign_bit = Return_softmax;
         if (Is_dropout) {
@@ -729,13 +836,16 @@ inline __device__ void device_1xN_loop(const Params &params) {
     Philox ph0(std::get<0>(seeds), tidx_global, std::get<1>(seeds));
     Philox ph1(std::get<0>(seeds), tidx_global + blockDim.x, std::get<1>(seeds));
     constexpr int M = Kernel_traits::Cta_tile_p::M;
-    const int STEPS = (params.seqlen_q + M - 1) / M;
 
+    const int STEPS = (params.seqlen_q + M - 1) / M;
+    // iterative over q, stride with M, block size
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
+    
     if (params.seqlen_k == blocksize_c) {
         fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, true, true>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
     } else {
         const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;
+        // iterative with k
         fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, true, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, 0);
         for (int loop_step_idx = 1; loop_step_idx < max_loop_steps - 1; loop_step_idx++) {
             fmha::device_1xN_<Kernel_traits, Is_dropout, Is_causal, Return_softmax, Need_attn_mask, Need_attn_bias, false, false>(params, bidb, bidh, 0, STEPS, ph0, ph1, loop_step_idx);

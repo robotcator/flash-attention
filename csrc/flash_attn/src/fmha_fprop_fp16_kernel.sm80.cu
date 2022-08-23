@@ -62,108 +62,124 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     bool has_attn = !(launch_params.params.attn_mask_ptr == nullptr);
     bool has_bias = !(launch_params.params.attn_bias_ptr == nullptr);
 
-    if (has_attn) 
-    {
-        if (has_bias) {
-            // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
-            // https://github.com/kokkos/kokkos-kernels/issues/349
-            // https://github.com/HazyResearch/flash-attention/issues/21
-            BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
-                auto kernel = launch_params.params.is_causal
-                    ? (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, true, true>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, true, true>)
-                    : (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, true, true>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, true, true>);
-                if( smem_size >= 48 * 1024 ) {
-                    FMHA_CHECK_CUDA(cudaFuncSetAttribute(
-                        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-                }
-                dim3 grid(launch_params.params.b, launch_params.params.h);
+#ifdef DEBUG_PRINT
+    printf ("has_attn=%d, has_bias=%d\n", has_attn, has_bias);
+#endif
 
-                // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-                // printf("block size: %d\n", Kernel_traits::THREADS);
-                kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
-                    launch_params.params);
-                FMHA_CHECK_CUDA(cudaPeekAtLastError());
-            });
-        }else{
-            // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
-            // https://github.com/kokkos/kokkos-kernels/issues/349
-            // https://github.com/HazyResearch/flash-attention/issues/21
-            BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
-                auto kernel = launch_params.params.is_causal
-                    ? (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, true, false>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, true, false>)
-                    : (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, true, false>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, true, false>);
-                if( smem_size >= 48 * 1024 ) {
-                    FMHA_CHECK_CUDA(cudaFuncSetAttribute(
-                        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-                }
-                dim3 grid(launch_params.params.b, launch_params.params.h);
+    // attn + bias on 
+    // IsDropoutConst off
+    auto kernel = &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, false, false, false, true, true>;
+    dim3 grid(launch_params.params.b, launch_params.params.h);
 
-                // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-                // printf("block size: %d\n", Kernel_traits::THREADS);
-                kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
-                    launch_params.params);
-                FMHA_CHECK_CUDA(cudaPeekAtLastError());
-            });
-        }
-    }else{
-        if (has_bias) {
-            // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
-            // https://github.com/kokkos/kokkos-kernels/issues/349
-            // https://github.com/HazyResearch/flash-attention/issues/21
-            BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
-                auto kernel = launch_params.params.is_causal
-                    ? (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, false, true>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, false, true>)
-                    : (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, false, true>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, false, true>);
-                if( smem_size >= 48 * 1024 ) {
-                    FMHA_CHECK_CUDA(cudaFuncSetAttribute(
-                        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-                }
-                dim3 grid(launch_params.params.b, launch_params.params.h);
+    // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    // printf("block size: %d\n", Kernel_traits::THREADS);
+    kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
+        launch_params.params);
+    FMHA_CHECK_CUDA(cudaPeekAtLastError());
+  
 
-                // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-                // printf("block size: %d\n", Kernel_traits::THREADS);
-                kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
-                    launch_params.params);
-                FMHA_CHECK_CUDA(cudaPeekAtLastError());
-            });
-        }else{
-            // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
-            // https://github.com/kokkos/kokkos-kernels/issues/349
-            // https://github.com/HazyResearch/flash-attention/issues/21
-            BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
-                auto kernel = launch_params.params.is_causal
-                    ? (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, false, false>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, false, false>)
-                    : (launch_params.return_softmax
-                    ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, false, false>
-                    : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, false, false>);
-                if( smem_size >= 48 * 1024 ) {
-                    FMHA_CHECK_CUDA(cudaFuncSetAttribute(
-                        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-                }
-                dim3 grid(launch_params.params.b, launch_params.params.h);
+    // if (has_attn) 
+    // {
+    //     if (has_bias) {
+    //         // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
+    //         // https://github.com/kokkos/kokkos-kernels/issues/349
+    //         // https://github.com/HazyResearch/flash-attention/issues/21
+    //         BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
+    //             auto kernel = launch_params.params.is_causal
+    //                 ? (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, true, true>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, true, true>)
+    //                 : (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, true, true>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, true, true>);
+    //             if( smem_size >= 48 * 1024 ) {
+    //                 FMHA_CHECK_CUDA(cudaFuncSetAttribute(
+    //                     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    //             }
+    //             dim3 grid(launch_params.params.b, launch_params.params.h);
 
-                // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-                // printf("block size: %d\n", Kernel_traits::THREADS);
-                kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
-                    launch_params.params);
-                FMHA_CHECK_CUDA(cudaPeekAtLastError());
-            });
-        }
-    }
+    //             // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    //             // printf("block size: %d\n", Kernel_traits::THREADS);
+    //             kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
+    //                 launch_params.params);
+    //             FMHA_CHECK_CUDA(cudaPeekAtLastError());
+    //         });
+    //     }else{
+    //         // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
+    //         // https://github.com/kokkos/kokkos-kernels/issues/349
+    //         // https://github.com/HazyResearch/flash-attention/issues/21
+    //         BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
+    //             auto kernel = launch_params.params.is_causal
+    //                 ? (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, true, false>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, true, false>)
+    //                 : (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, true, false>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, true, false>);
+    //             if( smem_size >= 48 * 1024 ) {
+    //                 FMHA_CHECK_CUDA(cudaFuncSetAttribute(
+    //                     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    //             }
+    //             dim3 grid(launch_params.params.b, launch_params.params.h);
+
+    //             // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    //             // printf("block size: %d\n", Kernel_traits::THREADS);
+    //             kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
+    //                 launch_params.params);
+    //             FMHA_CHECK_CUDA(cudaPeekAtLastError());
+    //         });
+    //     }
+    // }else{
+    //     if (has_bias) {
+    //         // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
+    //         // https://github.com/kokkos/kokkos-kernels/issues/349
+    //         // https://github.com/HazyResearch/flash-attention/issues/21
+    //         BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
+    //             auto kernel = launch_params.params.is_causal
+    //                 ? (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, false, true>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, false, true>)
+    //                 : (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, false, true>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, false, true>);
+    //             if( smem_size >= 48 * 1024 ) {
+    //                 FMHA_CHECK_CUDA(cudaFuncSetAttribute(
+    //                     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    //             }
+    //             dim3 grid(launch_params.params.b, launch_params.params.h);
+
+    //             // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    //             // printf("block size: %d\n", Kernel_traits::THREADS);
+    //             kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
+    //                 launch_params.params);
+    //             FMHA_CHECK_CUDA(cudaPeekAtLastError());
+    //         });
+    //     }else{
+    //         // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
+    //         // https://github.com/kokkos/kokkos-kernels/issues/349
+    //         // https://github.com/HazyResearch/flash-attention/issues/21
+    //         BOOL_SWITCH(launch_params.is_dropout, IsDropoutConst, [&] {
+    //             auto kernel = launch_params.params.is_causal
+    //                 ? (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, true, false, false>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, true, false, false, false>)
+    //                 : (launch_params.return_softmax
+    //                 ? &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, true, false, false>
+    //                 : &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, IsDropoutConst, false, false, false, false>);
+    //             if( smem_size >= 48 * 1024 ) {
+    //                 FMHA_CHECK_CUDA(cudaFuncSetAttribute(
+    //                     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+    //             }
+    //             dim3 grid(launch_params.params.b, launch_params.params.h);
+
+    //             // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    //             // printf("block size: %d\n", Kernel_traits::THREADS);
+    //             kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
+    //                 launch_params.params);
+    //             FMHA_CHECK_CUDA(cudaPeekAtLastError());
+    //         });
+    //     }
+    // }
 }
 
 void run_fmha_fp16_sm80(Launch_params<FMHA_fprop_params> &launch_params,
@@ -173,62 +189,69 @@ void run_fmha_fp16_sm80(Launch_params<FMHA_fprop_params> &launch_params,
         auto dprops = at::cuda::getCurrentDeviceProperties();
         if (launch_params.params.d == 16) {
             if( launch_params.params.seqlen_k == 128 ) {
+                // int S, int D, int STEP, int WARPS_M, int WARPS_N, 
+                // D is [hidden_dim]
                 using Kernel_traits = FMHA_kernel_traits<128, 16, 16, 1, 4, 0x08u, elem_type>;
                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else if( launch_params.params.seqlen_k == 256 ) {
-                using Kernel_traits = FMHA_kernel_traits<256, 16, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else {
-                // TD [2022-05-15] 512 gives wrong results rn
-                // using Kernel_traits = FMHA_kernel_traits<512, 16, 16, 1, 4, 0x08u, elem_type>;
-                using Kernel_traits = FMHA_kernel_traits<256, 16, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            }
-        } else if (launch_params.params.d == 32) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else if( launch_params.params.seqlen_k == 256 ) {
-                using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else {
-                using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            }
-        } else if (launch_params.params.d == 64) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else if( launch_params.params.seqlen_k >= 256 ) {
-                if (dprops->major == 8 && dprops->minor >= 0) {
-                    using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                } else if (dprops->major == 7 && dprops->minor == 5) {
-                    if (launch_params.is_dropout) { // Need to use the same block size as backward
-                        using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
-                        run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                    } else {
-                        using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
-                        run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                    }
-                }
-            }
-        } else if (launch_params.params.d == 128) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else {
-                if (dprops->major == 8 && dprops->minor >= 0 && !launch_params.is_dropout) {
-                    // TD [2022-06-05] Keep K in registers to reduce register spilling
-                    // Gives about 6% speedup compared to using block size 128.
-                    using Kernel_traits = FMHA_kernel_traits<256, 128, 16, 1, 4, 0x18u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                } else {  // Need to use the same block size as backward
-                    using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                }
-            }
-        }
+            } 
+            // else if( launch_params.params.seqlen_k == 256 ) {
+            //     using Kernel_traits = FMHA_kernel_traits<256, 16, 16, 1, 4, 0x08u, elem_type>;
+            //     run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+            // } else {
+            //     // TD [2022-05-15] 512 gives wrong results rn
+            //     // using Kernel_traits = FMHA_kernel_traits<512, 16, 16, 1, 4, 0x08u, elem_type>;
+            //     using Kernel_traits = FMHA_kernel_traits<256, 16, 16, 1, 4, 0x08u, elem_type>;
+            //     run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+            // }
+        } 
+        // debug on comments
+        // else if (launch_params.params.d == 32) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else if( launch_params.params.seqlen_k == 256 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else {
+        //         using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     }
+        // } else if (launch_params.params.d == 64) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else if( launch_params.params.seqlen_k >= 256 ) {
+        //         if (dprops->major == 8 && dprops->minor >= 0) {
+        //             using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         } else if (dprops->major == 7 && dprops->minor == 5) {
+        //             if (launch_params.is_dropout) { // Need to use the same block size as backward
+        //                 using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
+        //                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //             } else {
+        //                 using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
+        //                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //             }
+        //         }
+        //     }
+        // } else if (launch_params.params.d == 128) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else {
+        //         if (dprops->major == 8 && dprops->minor >= 0 && !launch_params.is_dropout) {
+        //             // TD [2022-06-05] Keep K in registers to reduce register spilling
+        //             // Gives about 6% speedup compared to using block size 128.
+        //             using Kernel_traits = FMHA_kernel_traits<256, 128, 16, 1, 4, 0x18u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         } else {  // Need to use the same block size as backward
+        //             using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         }
+        //     }
+        // }
+        // debug on comments
+
         // if (launch_params.params.d == 64) {
         //     // using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
         //     // using Kernel_traits = FMHA_kernel_traits<64, 64, 16, 1, 4, 0x08u, elem_type>;
