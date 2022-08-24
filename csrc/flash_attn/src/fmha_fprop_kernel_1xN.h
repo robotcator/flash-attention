@@ -352,7 +352,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for mask.
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
-    Gmem_tile_mask gmem_mask(params, binfo, tidx);
+    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
     // TODO: load fun as s
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
@@ -426,10 +426,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_q.load();
     // Trigger the loads for V.
     gmem_v.load();
-
-    using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
-    Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
-    gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
 
     if (!Is_first) { __syncthreads(); }
 
@@ -566,6 +562,61 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
+
+        using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+        Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+        gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
+        gmem_mask.move();
+
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_o::MMAS_N; ++ki ) {
+                    // 1st row - 4 elements per row.
+                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
+                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
+                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
+                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
+
+                    // 2nd row - 4 elements per row.
+                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
+                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
+                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
+                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
+
+                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
+                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
+                }
+            }
+            printf("\n");
+        }
+#endif
+        // Apply the attn mask.
+        softmax.apply_attn_mask(frag_mask);
+
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_o::MMAS_N; ++ki ) {
+                    // 1st row - 4 elements per row.
+                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
+                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
+                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
+                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
+
+                    // 2nd row - 4 elements per row.
+                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
+                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
+                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
+                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
+
+                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
+                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
+                }
+            }
+            printf("\n");
+        }
+#endif
 
         // Apply the mask. 
         // this impl is more like padding

@@ -497,12 +497,13 @@ struct Gmem_tile_mma_mask {
     template< typename Params, typename Block_info >
     inline __device__ Gmem_tile_mma_mask(const Params &params,
         // const uint32_t row_stride_in_elts, const uint32_t head_stride_in_elts, 
-        const Block_info& binfo, const int tidx) 
+        const Block_info& binfo, const int tidx, const int loop_step_idx) 
         : ptr_(static_cast<char *>(params.attn_mask_ptr))
         // : row_stride_in_bytes(row_stride_in_elts * BYTES_PER_ELEMENT)
         , actual_seqlen_q(binfo.actual_seqlen_q)
         , actual_seqlen_k(binfo.actual_seqlen_k)
         , tidx_(tidx)
+        , loop_step_idx(loop_step_idx)
     {
         row_stride_in_bytes = binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
         
@@ -551,7 +552,6 @@ struct Gmem_tile_mma_mask {
     template<typename Fragment, typename elem_type>
     inline __device__ void load(Fragment (&frag)[M][N]) {
         // using Fragment = typename fmha::Fragment<cutlass::half_t, 8>;
-        // like Fragment_a
 
         const void *ptrs[LDGS_PER_THREAD_PER_WARP];
         uint32_t preds[LDGS_PER_THREAD_PER_WARP];
@@ -566,7 +566,7 @@ struct Gmem_tile_mma_mask {
                     for (int jj = 0; jj < 2; ++jj ) {
                         int offset = ii * 2 + jj;
                         const int current_row = mi * ROWS + ii * 8;
-                        const int current_col = ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
+                        const int current_col = loop_step_idx * Cta_tile::N + ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
                         // 8 is actually col of half data now, for more general case ?
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
@@ -601,6 +601,7 @@ struct Gmem_tile_mma_mask {
 
     int row;
     int col;
+    const int loop_step_idx;
     uint32_t row_stride_in_bytes;
     // The pointer.
     char *ptr_;

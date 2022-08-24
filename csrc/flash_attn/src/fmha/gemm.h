@@ -174,22 +174,6 @@ struct Fragment_c : public Fragment<elem_type, 8> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename T> __device__
-inline float toFloat(T a) {
-    return (float)a;
-}
-template<> __device__
-inline float toFloat(half a) {
-    return __half2float(a);
-}
-#if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ >= 800
-template<> __device__
-inline float toFloat(__nv_bfloat16 a) {
-    return __bfloat162float(a);
-}
-#endif
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 struct Fragment_accumulator : public Fragment<float, 8> {
 

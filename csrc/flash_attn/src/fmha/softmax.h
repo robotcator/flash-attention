@@ -30,6 +30,8 @@
 #include <cmath>
 #include <cuda_fp16.h>
 
+#include <fmha/utils.h>
+
 namespace fmha {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -487,6 +489,27 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
         , params_scale_bmm1_(params.scale_bmm1) 
         , smem_sum_(static_cast<float*>(smem), tidx)
         , smem_max_(static_cast<float*>(smem) + Smem_tile_red::ELTS_PER_TILE, tidx) {
+    }
+
+    template<bool zero=false, typename Fragment>
+    inline __device__ void apply_attn_mask(const Fragment (&mask)[MMAS_M][MMAS_N]) {
+        #pragma unroll
+        for( int mi = 0; mi < MMAS_M; ++mi ) {
+            #pragma unroll
+            for( int ii = 0; ii < 2; ++ii ) {
+                #pragma unroll
+                for( int ni = 0; ni < MMAS_N; ++ni ) {
+                    #pragma unroll
+                    for( int jj = 0; jj < 4; ++jj ) {
+                        // if( abs(float(mask[mi][ni].elt(ii * 4 + jj))) > 0 ) {
+                        //     this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
+                        // }
+                        // this->elt_[2 * mi + ii][4 * ni + jj] += float(mask[mi][ni].elt(ii * 4 + jj));
+                        this->elt_[2 * mi + ii][4 * ni + jj] += toFloat(mask[mi][ni].elt(ii * 4 + jj));
+                    }
+                }
+            }
+        }
     }
 
     // Pack the data to a fragment for the next GEMM.
