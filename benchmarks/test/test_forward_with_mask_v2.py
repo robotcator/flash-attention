@@ -257,4 +257,17 @@ print("Output dQ max diff with Pytorch: {0}".format( (dq - dq_pt).abs().max().it
 print("Output dK max diff with Pytorch: {0}".format( (dk - dk_pt).abs().max().item() ))
 print("Output dV max diff with Pytorch: {0}".format( (dv - dv_pt).abs().max().item() ))
 
-print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
+
+print("Output dQ mean diff: {0}".format( (dq - dq_ref).abs().mean().item() ))
+print("Output dK mean diff: {0}".format( (dk - dk_ref).abs().mean().item() ))
+print("Output dV mean diff: {0}".format( (dv - dv_ref).abs().mean().item() ))
+
+print("Pytorch dQ mean diff: {0}".format( (dq_pt - dq_ref).abs().mean().item() ))
+print("Pytorch dK mean diff: {0}".format( (dk_pt - dk_ref).abs().mean().item() ))
+print("Pytorch dV mean diff: {0}".format( (dv_pt - dv_ref).abs().mean().item() ))
+
+print("Output dQ mean diff with Pytorch: {0}".format( (dq - dq_pt).abs().mean().item() ))
+print("Output dK mean diff with Pytorch: {0}".format( (dk - dk_pt).abs().mean().item() ))
+print("Output dV mean diff with Pytorch: {0}".format( (dv - dv_pt).abs().mean().item() ))
+
+print ("less than twice in max error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
