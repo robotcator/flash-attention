@@ -56,7 +56,11 @@ def _attention(query, key, value, mask=None, biases=None, upcast=False) -> torch
     # print ("after bias:", a)
     
     if mask is not None:
-        a += mask
+        # a += mask
+        # import pdb; pdb.set_trace()
+        # please do not use add now
+        a.masked_fill_(mask < 0, float('-inf'))
+        
     # print ("after mask:", a)
 
     a = softmax_no_cast(a, -1)
@@ -104,6 +108,10 @@ def _flash_attn(q, k, v, attn_mask=None):
         0, (batch_size + 1) * n, step=n, dtype=torch.int32, device=k.device
     )
 
+    if attn_mask is not None:
+        # import pdb; pdb.set_trace()
+        attn_mask = attn_mask.reshape([bs * n, no_heads, n, n])
+
     out = flash_attn_unpadded_func(
         q,
         k,
@@ -136,6 +144,12 @@ seq = 128
 head = 1
 c_dim = 16
 
+# mini
+# bs = 1
+# seq = 2
+# head = 1
+# c_dim = 16
+
 seq_q = seq_k = seq_v = seq
 
 print (10 * "*" + "prepare data" + 10 * "*" )
@@ -154,25 +168,29 @@ orig_tensor.requires_grad = True
 print ("origin shape: ", orig_tensor.shape)
 # [bs, seq, seq, head, c_dim]
 
-mask = gen_attn_mask(
-    (
-        torch.rand(
-            bs,
-            seq_q,
-            1,
-            1,
-            seq_k,
-            dtype=dtype,
-            device=device,
-        )
-        > 0.2
-    ).type(dtype),
+mask_data = torch.rand(
+                bs,
+                seq_q,
+                1,
+                1,
+                seq_k,
+                dtype=dtype,
+                device=device,
+            )
+
+# fake data
+# mask_data[:, :, :, :, :] = 0.02
+# mask_data[:, :, :, :, 0] = 0.001
+
+mask = gen_attn_mask( 
+    ( mask_data > 0.01 ).type(dtype),
     -3e4,
 )
 print ("mask shape: ", mask.shape)
 mask_broadcast = mask.expand([bs, seq_k, head, seq_q, seq_k])
 print ("mask_broadcast shape: ", mask_broadcast.shape)
 
+print ("mask broadcast: ", mask_broadcast)
 
 print (10 * "*" + "normal attn fp32" + 10 * "*" )
 normal_attn_v1 = orig_tensor.clone()
@@ -183,6 +201,7 @@ print ("attention output shape: ", output_ref.shape)
 print (10 * "*" + "normal attn fp32" + 10 * "*" )
 print ()
 
+
 print (10 * "*" + "normal attn fp16" + 10 * "*" )
 normal_attn_v2 = orig_tensor.clone()
 output_pt, softmax_output_pt = _attention(normal_attn_v2, normal_attn_v2, normal_attn_v2, mask=mask_broadcast)
@@ -192,10 +211,11 @@ print ("attention output shape: ", output_pt.shape)
 print (10 * "*" + "normal attn fp32" + 10 * "*" )
 print ()
 
+
 print (10 * "*" + "flash attn" + 10 * "*" )
 normal_attn_flash = orig_tensor.clone()
 output3 = _flash_attn(normal_attn_flash, normal_attn_flash, normal_attn_flash, attn_mask=mask_broadcast)
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 print ("flash attn output shape: ", output3.shape)
 print (10 * "*" + "flash attn" + 10 * "*" )
 print ()
@@ -220,14 +240,14 @@ print ()
 
 # test backward
 
-# g = torch.randn_like(output3)
-# dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
-# dq_ref, dk_ref, dv_ref, = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1), g)
-# dq_pt, dk_pt, dv_pt, = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
+g = torch.randn_like(output3)
+dq_ref, dk_ref, dv_ref  = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1), g)
+dq_pt, dk_pt, dv_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
+dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
 
-# print("dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
-# print("dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
-# print("dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
+print("dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
+print("dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
+print("dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
 
-# print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
+print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
 

@@ -501,11 +501,11 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
                 for( int ni = 0; ni < MMAS_N; ++ni ) {
                     #pragma unroll
                     for( int jj = 0; jj < 4; ++jj ) {
-                        // if( abs(float(mask[mi][ni].elt(ii * 4 + jj))) > 0 ) {
-                        //     this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
-                        // }
+                        if( abs(toFloat(mask[mi][ni].elt(ii * 4 + jj))) > 0 ) {
+                            this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
+                        }
                         // this->elt_[2 * mi + ii][4 * ni + jj] += float(mask[mi][ni].elt(ii * 4 + jj));
-                        this->elt_[2 * mi + ii][4 * ni + jj] += toFloat(mask[mi][ni].elt(ii * 4 + jj));
+                        // this->elt_[2 * mi + ii][4 * ni + jj] += toFloat(mask[mi][ni].elt(ii * 4 + jj));
                     }
                 }
             }

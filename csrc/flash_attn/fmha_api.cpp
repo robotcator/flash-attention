@@ -358,7 +358,9 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
         const float softmax_scale,
         const bool zero_tensors,
         const bool is_causal,
-        c10::optional<at::Generator> gen_
+        c10::optional<at::Generator> gen_,
+        const c10::optional<at::Tensor> &attn_mask, // attn_mask
+        const c10::optional<at::Tensor> &attn_bias // attn bias
 ) {
     auto dprops = at::cuda::getCurrentDeviceProperties();
     bool is_sm75 = dprops->major == 7 && dprops->minor == 5;

@@ -532,9 +532,10 @@ struct Gmem_tile_mma_mask {
         // The block index.
         uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
 
-        uint32_t row_offset = bidx * params.seqlen_q * params.seqlen_k * BYTES_PER_ELEMENT;
+        // the index of bs and head dim
+        uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
         // row_offset = (uint32_t)(row * row_stride_in_bytes);
-        row_offset += (uint32_t)(row * params.seqlen_k * BYTES_PER_ELEMENT);   
+        row_offset += (uint32_t)(row * binfo.actual_seqlen_k * BYTES_PER_ELEMENT);   
 
 #ifdef DEBUG_PRINT
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
@@ -567,20 +568,25 @@ struct Gmem_tile_mma_mask {
                         int offset = ii * 2 + jj;
                         const int current_row = mi * ROWS + ii * 8;
                         const int current_col = loop_step_idx * Cta_tile::N + ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
+                        // const int current_col = ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
                         // 8 is actually col of half data now, for more general case ?
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
-            printf("mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d",
-                mi, ni, ii, jj, offset, current_row, current_col);
-            printf("\n");
-        }
-#endif
                         //  the row is already in the right position
                         ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                        preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
-                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) < min(COLS, actual_seqlen_k));
+                        preds[offset] = (current_row <= min(ROWS, actual_seqlen_q))
+                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
+#ifdef DEBUG_PRINT
+                        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
+                            printf("mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
+                                mi, ni, ii, jj, offset, current_row, current_col, ptr_, ptrs[offset], preds[offset]);
+                            printf("current_row=%d, current_col=%d, ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d\n",
+                                current_row, current_col, ROWS, actual_seqlen_q, COLS, actual_seqlen_k);
+                            printf("cond 1=%d\n", (current_row <= min(ROWS, actual_seqlen_q)));
+                            printf("cond 2=%d\n", ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
+                            printf("\n");
+                        }
+#endif
                     }
                 }
 
