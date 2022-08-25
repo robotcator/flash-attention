@@ -245,9 +245,16 @@ dq_ref, dk_ref, dv_ref  = torch.autograd.grad(output_ref, (normal_attn_v1, norma
 dq_pt, dk_pt, dv_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
 dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
 
-print("dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
-print("dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
-print("dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
+print("Output dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
+print("Output dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
+print("Output dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
+
+print("Pytorch dQ max diff: {0}".format( (dq_pt - dq_ref).abs().max().item() ))
+print("Pytorch dK max diff: {0}".format( (dk_pt - dk_ref).abs().max().item() ))
+print("Pytorch dV max diff: {0}".format( (dv_pt - dv_ref).abs().max().item() ))
+
+print("Output dQ max diff with Pytorch: {0}".format( (dq - dq_pt).abs().max().item() ))
+print("Output dK max diff with Pytorch: {0}".format( (dk - dk_pt).abs().max().item() ))
+print("Output dV max diff with Pytorch: {0}".format( (dv - dv_pt).abs().max().item() ))
 
 print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
-

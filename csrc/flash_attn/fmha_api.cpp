@@ -171,7 +171,9 @@ void set_params_dgrad(FMHA_dgrad_params &params,
                       void *dsoftmax_sum_d,
                       float p_dropout,
                       float softmax_scale,
-                      bool is_causal) {
+                      bool is_causal,
+                      void *attn_mask,
+                      void *attn_bias) {
 
     set_params_fprop(params,
                      b, seqlen_q, seqlen_k, h, d,
@@ -185,8 +187,8 @@ void set_params_dgrad(FMHA_dgrad_params &params,
                      p_dropout,
                      softmax_scale,
                      is_causal,
-                     nullptr,
-                     nullptr);
+                     attn_mask,
+                     attn_bias);
 
     // Set the pointers and strides.
     params.dq_ptr = dq.data_ptr();
@@ -472,7 +474,9 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      softmax_d.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     attn_mask ? attn_mask->data_ptr() : nullptr,
+                     attn_bias ? attn_bias->data_ptr() : nullptr);
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
         gen_, at::cuda::detail::getDefaultCUDAGenerator());
@@ -742,7 +746,9 @@ mha_bwd_block(const at::Tensor &dout,  // total x num_heads, x head_size
                      softmax_d.data_ptr(),
                      p_dropout,
                      softmax_scale,
-                     is_causal);
+                     is_causal,
+                     nullptr,
+                     nullptr);
     params.blockmask = static_cast<int *>(blockmask.data_ptr());
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(

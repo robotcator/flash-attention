@@ -563,15 +563,17 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
 
-        using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
-        Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
-        gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
-        gmem_mask.move();
+         // if constexpr (has_attn) {
+        if (!(params.attn_mask_ptr == nullptr)) {
+            using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
+            Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
+            gmem_mask.move();
 
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_o::MMAS_N; ++ki ) {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
                     // 1st row - 4 elements per row.
                     float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
                     float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
@@ -591,13 +593,13 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             printf("\n");
         }
 #endif
-        // Apply the attn mask.
-        softmax.apply_attn_mask(frag_mask);
+            // Apply the attn mask.
+            softmax.apply_attn_mask(frag_mask);
 
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_o::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_o::MMAS_N; ++ki ) {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
                     // 1st row - 4 elements per row.
                     float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
                     float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
@@ -617,6 +619,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             printf("\n");
         }
 #endif
+        }
 
         // Apply the mask. 
         // this impl is more like padding
@@ -649,7 +652,15 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 
         softmax.template reduce_max</*zero_init=*/Is_first>(p_max);
-
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            // can we print the tile row?
+            for (int i = 0; i < Mma_tile_p::MMAS_M * 2; i ++) {
+                printf("i=%d, p_max=%f\n", i, p_max[i]);
+            }
+            printf("\n");
+        }
+#endif
         // if ((threadIdx.x == 0) && (l == 38)) {
         //     printf("loop_step_idx %d, p_max = %.6f, %.6f., p_prev_lse = %.6f, %.6f\n", loop_step_idx, p_max[0], p_max[1], Is_first ? -10000.f : p_prev_lse[0], Is_first ? -10000.f : p_prev_lse[1]);
         // }
@@ -682,7 +693,15 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // softmax.reduce_sum(p_sum);
         softmax.reduce_sum_before_sync_(p_sum);
         // softmax.template reduce_sum_before_sync_</*zero_init=*/Is_first>(p_sum);
-
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            // can we print the tile row?
+            for (int i = 0; i < Mma_tile_p::MMAS_M * 2; i ++) {
+                printf("i=%d, p_max=%f\n", i, p_sum[i]);
+            }
+            printf("\n");
+        }
+#endif
         // float p_sum_log[Mma_tile_p::MMAS_M * 2];
         // for (int mi = 0; mi  < Mma_tile_p::MMAS_M * 2; ++mi) {
         //     float sum = p_sum[mi];
