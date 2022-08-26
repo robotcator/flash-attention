@@ -512,6 +512,25 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
         }
     }
 
+
+    template<bool zero=false, typename Fragment>
+    inline __device__ void apply_attn_bias(const Fragment (&bias)[MMAS_M][MMAS_N]) {
+        #pragma unroll
+        for( int mi = 0; mi < MMAS_M; ++mi ) {
+            #pragma unroll
+            for( int ii = 0; ii < 2; ++ii ) {
+                #pragma unroll
+                for( int ni = 0; ni < MMAS_N; ++ni ) {
+                    #pragma unroll
+                    for( int jj = 0; jj < 4; ++jj ) {
+                        this->elt_[2 * mi + ii][4 * ni + jj] += toFloat(bias[mi][ni].elt(ii * 4 + jj));
+                    }
+                }
+            }
+        }
+    }
+
+
     // Pack the data to a fragment for the next GEMM.
     template<typename elem_type=__half, int K, int M>
     inline __device__ void pack(Fragment_a (&dst)[K][M]) const {

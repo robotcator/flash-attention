@@ -357,9 +357,9 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
-    // using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-    // // conctructor
-    // Gmem_tile_bias gmem_bias(params, binfo, tidx);
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+    // conctructor
+    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
     // TODO: load fun as s
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
@@ -381,11 +381,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_mask.move(begin);
     }
 
-    // // if constexpr (has_bias) {
-    // if (!(params.attn_bias_ptr == nullptr)) {
-    //     // TODO: bias move 
-    //     gmem_bias.move(begin);
-    // }
+    // if constexpr (has_bias) {
+    if (!(params.attn_bias_ptr == nullptr)) {
+        // TODO: bias move 
+        gmem_bias.move(begin);
+    }
 
     gmem_softmax_lse.move(begin);
     
@@ -621,6 +621,63 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 #endif
         }
 
+        if (!(params.attn_bias_ptr == nullptr)) {
+            using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
+            Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
+            gmem_bias.move();
+
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
+                    // 1st row - 4 elements per row.
+                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
+                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
+                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
+                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
+
+                    // 2nd row - 4 elements per row.
+                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
+                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
+                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
+                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
+
+                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
+                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
+                }
+            }
+            printf("\n");
+        }
+#endif
+            // Apply the attn mask.
+            softmax.apply_attn_bias(frag_bias);
+
+#ifdef DEBUG_PRINT
+        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
+                    // 1st row - 4 elements per row.
+                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
+                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
+                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
+                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
+
+                    // 2nd row - 4 elements per row.
+                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
+                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
+                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
+                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
+
+                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
+                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
+                }
+            }
+            printf("\n");
+        }
+#endif
+        }
+
         // Apply the mask. 
         // this impl is more like padding
         softmax.apply_mask(mask);
@@ -673,6 +730,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Compute the exponential value.
         // softmax.apply_exp(p_max);
+        // Compute: exp(p - p_max)
         softmax.scale_apply_exp(p_max, params.scale_bmm1f);
 
         // if (!Is_first) {
@@ -728,6 +786,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         Frag_p frag_p[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
         static_assert(Mma_tile_o::MMAS_M == Mma_tile_p::MMAS_M);
         static_assert(Mma_tile_o::MMAS_K == Mma_tile_p::MMAS_N);
+        // frag_p = exp(s{i} - s{max}) 
         softmax.template pack<elem_type>(frag_p);
 
         if (Return_softmax) {
