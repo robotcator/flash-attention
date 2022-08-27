@@ -528,7 +528,7 @@ struct Gmem_tile_mma_mask {
                 "only support sm80 m16n8k16 tensor core");
 
         // The distance between two blocks (in bytes).
-        // TODO: mask is [bs, head, seq_q, seq_k]
+        // TODO: mask is [bs * seq, head, seq_q, seq_k]
         // The block index.
         uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
 

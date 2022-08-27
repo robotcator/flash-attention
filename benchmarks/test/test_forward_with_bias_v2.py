@@ -53,6 +53,7 @@ def _attention(query, key, value, mask=None, biases=None, upcast=False) -> torch
     # import pdb; pdb.set_trace()
 
     if biases is not None:
+        print ("attn_shape = {}, bias_shape = {}".format(a.shape, biases.shape))
         a += biases
     # print ("after bias:", a)
     
@@ -108,11 +109,19 @@ def _flash_attn(q, k, v, attn_mask=None, attn_bias=None):
 
     if attn_mask is not None:
         # import pdb; pdb.set_trace()
-        attn_mask = attn_mask.reshape([bs * n, no_heads, n, n])
+        attn_mask = attn_mask.reshape([batch_size , no_heads, n, n]).contiguous()
 
     if attn_bias is not None:
         # import pdb; pdb.set_trace()
-        attn_bias = attn_bias.reshape([bs * n, no_heads, n, n])
+        if attn_bias.is_contiguous:
+            print ("attn_bias it not contiguous")
+        attn_bias = attn_bias.reshape([batch_size , no_heads, n, n]).contiguous()
+        # attn_bias = attn_bias.reshape([batch_size , no_heads, n, n])
+
+    print ("check shapes q_shape = {} k_shape = {} v_shape = {}".format(q.shape, k.shape, v.shape))
+    print ("check shapes q_cu_shape = {} k_cu_shape = {}".format(q_cu_seqlens.shape, k_cu_seqlens.shape))
+    if attn_bias is not None:
+        print ("attn_bias shape = {}".format(attn_bias.shape))
 
     out = flash_attn_unpadded_func(
         q,
@@ -122,7 +131,7 @@ def _flash_attn(q, k, v, attn_mask=None, attn_bias=None):
         k_cu_seqlens,
         q_max_s,
         k_max_s,
-        # attn_mask=attn_mask,
+        attn_mask=None,
         attn_bias=attn_bias,
         dropout_p = 0.,
         softmax_scale = 1., # q has been scaled already
@@ -142,22 +151,22 @@ def gen_attn_mask(mask, neg_inf):
 
 torch.manual_seed(0)
 # v2
+# bs = 1
+# seq = 128
+# head = 1
+# c_dim = 16
+
+# mini
 bs = 1
 seq = 128
 head = 1
 c_dim = 16
 
-# mini
-# bs = 1
-# seq = 2
-# head = 1
-# c_dim = 16
-
-seq_q = seq_k = seq_v = seq
+seq_q = seq_k = seq_v = 128
 
 print (10 * "*" + "prepare data" + 10 * "*" )
-dtype = torch.bfloat16
-# dtype = torch.half
+# dtype = torch.bfloat16
+dtype = torch.half
 device = "cuda"
 
 # orig_tensor = torch.stack(
@@ -165,18 +174,18 @@ device = "cuda"
 #     ,dim = 1
 # ).to(device).to(dtype)
 
-orig_tensor = torch.empty((bs, seq, head, seq, c_dim), dtype=dtype, device=device).normal_(mean=0, std=.5)
+orig_tensor = torch.empty((bs, seq, head, seq_q, c_dim), dtype=dtype, device=device).normal_(mean=0, std=.5)
 orig_tensor.requires_grad = True
 # print ("tensor: ", orig_tensor)
 print ("origin shape: ", orig_tensor.shape)
 # [bs, seq, seq, head, c_dim]
 
-bias = torch.rand(
+bias = torch.randn(
     1, 1, head, seq_q, seq_k, dtype=dtype, device=device
-) * 0
+) * 1
 
 print ("bias shape: ", bias.shape)
-bias_broadcast = bias.expand([bs, seq_k, head, seq_q, seq_k])
+bias_broadcast = bias.expand([bs, seq, head, seq_q, seq_k])
 print ("bias_broadcast shape: ", bias_broadcast.shape)
 
 # print ("bias_broadcast: ", bias_broadcast)
@@ -216,6 +225,9 @@ print (10 * "*" + "comparing forward" + 10 * "*" )
 print("Output max diff: {0}".format((output3 - output_ref).abs().max().item()))
 print("Output mean diff: {0}".format((output3 - output_ref).abs().mean().item()))
 
+# print("Output max diff: {0}".format((output3[:,0,:,:,:] - output_ref[:,0,:,:,:]).abs().max().item()))
+# print("Output max diff: {0}".format((output3[:,3,:,:,:] - output_ref[:,3,:,:,:]).abs().max().item()))
+
 print("Pytorch max diff: {0}".format((output_pt - output_ref).abs().max().item()))
 print("Pytorch mean diff: {0}".format((output_pt - output_ref).abs().mean().item()))
 
@@ -226,6 +238,15 @@ print ("less than twice error: ", (output3 - output_ref).abs().max().item() <= 2
 print (10 * "*" + "comparing forward" + 10 * "*" )
 print ()
 
+# max_diff = (output3 - output_ref).abs().max().item()
+# relative_diff = (output_pt - output_ref).abs().max().item()
+
+# for i in range(bs):
+#     for j in range(seq_q):
+#         for k in range(seq_k):
+#             if (output3[i, j, k, :, :] - output_ref[i, j, k, :, :]).abs().max().item() >= 2 * (relative_diff):
+#                 print ("i={}, j={}, k={} output3={}".format(i, j, k, output3[i, j, k, :, :].data))
+#                 print ("i={}, j={}, k={} output_pt={}".format(i, j, k, output_ref[i, j, k, :, :].data))
 
 # test backward
 

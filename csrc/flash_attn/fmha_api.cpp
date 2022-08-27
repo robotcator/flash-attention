@@ -268,6 +268,18 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
 
+    if (attn_bias.has_value()) {
+        TORCH_CHECK(attn_bias.value().is_cuda());
+        TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_bias.value().is_contiguous());
+    }
+
+    if (attn_mask.has_value()) {
+        TORCH_CHECK(attn_mask.value().is_cuda());
+        TORCH_CHECK(attn_mask.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_mask.value().is_contiguous());
+    }
+
     int blocksize_c = ((head_size == 128 && (is_dropout || !is_sm80)) || (is_sm75 && head_size == 64 && is_dropout)) ? 128 : 256;
     // Need to round max_seqlen_k to multiples of blocksize_c
     int max_seqlen_k = ((max_seqlen_k_ + blocksize_c - 1) / blocksize_c) * blocksize_c;
