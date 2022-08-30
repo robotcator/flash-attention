@@ -414,7 +414,7 @@ void test_fwd_with_bias(bool has_bias) {
                     // else attn_bias_cpu[i][j][k][l] = 0;
                     
                     // attn_bias_cpu[i][j][k][l] = 0;
-                    attn_bias_cpu[i][j][k][l] = cnt * 0.001;
+                    attn_bias_cpu[i][j][k][l] = cnt * 0.1;
                     cnt ++;
                     // printf("i=%d, j=%d, k=%d, l=%d attn_bias=%f\n", i, j, k, l, attn_bias_cpu[i][j][k][l]);
                     // std::cout << "i=" << i << ", j=" << j << ", k=" << k << ", l" 
@@ -480,38 +480,70 @@ void test_fwd_with_bias(bool has_bias) {
     dump_tensor("attn_output", ret[0]);
     dump_tensor("attn_lse", ret[1]);
 
-    // at::Tensor dout_cpu = at::ones({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
-    // at::Tensor dq_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
-    // at::Tensor dk_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
-    // at::Tensor dv_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    at::Tensor dout_cpu = at::ones({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    
+    at::Tensor dq_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    at::Tensor dk_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    at::Tensor dv_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
 
-    // auto dout = dout_cpu.cuda();
-    // auto dq = dq_cpu.cuda();
-    // auto dk = dk_cpu.cuda();
-    // auto dv = dv_cpu.cuda();
+    auto dout = dout_cpu.cuda();
+    auto dq = dq_cpu.cuda();
+    auto dk = dk_cpu.cuda();
+    auto dv = dv_cpu.cuda();
+    std::vector<at::Tensor> bwd_ret;
 
-    // std::vector<at::Tensor> bwd_ret = mha_bwd(
-    //     dout,
-    //     q,
-    //     k, 
-    //     v, 
-    //     ret[0],
-    //     ret[1],
-    //     dq,
-    //     dk,
-    //     dv,
-    //     cu_seqlens_q,  // b + 1
-    //     cu_seqlens_k,  // b + 1
-    //     max_seqlen_q_,
-    //     max_seqlen_k_,
-    //     0.0,
-    //     softmax_scale,
-    //     zero_tensors,
-    //     is_causal,
-    //     gen_,
-    //     attn_mask,
-    //     attn_bias
-    // );
+    if (has_bias) {
+        bwd_ret = mha_bwd(
+            dout,
+            q,
+            k, 
+            v, 
+            ret[0],
+            ret[1],
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,  // b + 1
+            cu_seqlens_k,  // b + 1
+            max_seqlen_q_,
+            max_seqlen_k_,
+            0.0,
+            softmax_scale,
+            zero_tensors,
+            is_causal,
+            gen_,
+            attn_mask,
+            attn_bias
+        );
+    }else{
+        bwd_ret = mha_bwd(
+            dout,
+            q,
+            k, 
+            v, 
+            ret[0],
+            ret[1],
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,  // b + 1
+            cu_seqlens_k,  // b + 1
+            max_seqlen_q_,
+            max_seqlen_k_,
+            0.0,
+            softmax_scale,
+            zero_tensors,
+            is_causal,
+            gen_,
+            attn_mask,
+            attn_mask
+            // placeholder
+        );
+    }
+
+    dump_tensor("attn_dq", dq);
+    dump_tensor("attn_dk", dk);
+    dump_tensor("attn_dv", dv);
 
     // std::cout << "bwd Ret vec size is " << ret.size();
     // for (int i = 0; i < bwd_ret.size(); i ++) {
