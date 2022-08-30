@@ -126,11 +126,12 @@ ext_modules.append(
         ],
         extra_compile_args={
             # "cxx": ["-O3"] + generator_flag,
-            "cxx": ["-g"] + generator_flag,
+            "cxx": ["-O3", "-DDEBUG_PRINT"] + generator_flag,
             "nvcc": append_nvcc_threads(
                 [
-                    #"-O3",
-                    "-g",
+                    "-O3",
+                    # "-g",
+                    "-DDEBUG_PRINT",
                     "-U__CUDA_NO_HALF_OPERATORS__",
                     "-U__CUDA_NO_HALF_CONVERSIONS__",
                     "--expt-relaxed-constexpr",

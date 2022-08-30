@@ -216,6 +216,12 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         gmem_mask.move(begin);
     }
 
+    // if constexpr (has_attn) {
+    if (!(params.attn_bias_ptr == nullptr)) {
+        // TODO: mask move 
+        gmem_bias.move(begin);
+    }
+
     if (!Is_first) {
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
@@ -240,6 +246,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // Commit the data for Q, dO, and V to shared memory.
     gmem_q.commit(gemm_q_k.smem_q);
     gmem_do.commit(smem_do);
+    // D_sum
     if (Is_first) {
         dot_do_o<Gmem_tile_do::ROWS, Gmem_tile_do::THREADS_PER_ROW, elem_type>(
             gmem_do.fetch_, gmem_o.fetch_, params.p_dropout, gmem_softmax_d, tidx
@@ -345,7 +352,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
-                 // if constexpr (has_attn) {
+        // if constexpr (has_attn) {
         if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
@@ -433,7 +440,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         }
 #endif
             // Apply the attn mask.
-            softmax.apply_attn_bias(frag_bias);
+            softmax.apply_attn_bias(frag_bias, l);
 
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
@@ -464,7 +471,25 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         softmax.apply_mask(mask);
         // Scale by log-sum-exp of the softmax
         // softmax.apply_exp(p_lse);
+        // exp (x - (max+log(sum))) = exp(x - max) / sum
         softmax.template scale_apply_exp</*scale_max=*/false>(p_lse, params.scale_bmm1f);
+#ifdef DEBUG_PRINT
+        if ((blockIdx.x == 0) && (blockIdx.y == 0))  {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
+                    for (int ii = 0; ii < 2; ii ++) {
+                        for (int jj = 0; jj < 4; jj ++) {
+                            int st_row = 2 * mi + ii;
+                            int st_col = 4 * ki + jj;
+                            printf("bwd softmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%d",
+                                threadIdx.x, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
+                        }
+                    }
+                }
+            }
+            printf("\n");
+        }
+#endif
         if (Is_dropout) {
             // softmax.apply_dropout(ph, params.p_dropout_in_uint);
             // softmax.template apply_dropout</*encode_dropout_in_sign_bit=*/true>(ph, params.p_dropout_in_uint);
@@ -478,7 +503,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         softmax.template pack<elem_type>(frag_p);
 
         // Store s * dmask to smem for transpose
-        // ?
+        // how to test
         smem_s.store(frag_p);
 
         // Trigger the load for the next Q values.
@@ -493,6 +518,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         //     __syncthreads();
         // }
 
+        // what's meaning?
         fmha::Fragment_accumulator acc_dp[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
         #pragma unroll
         for (int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi) {
@@ -771,6 +797,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // TODO [TD - 2022-05-04]: Are there cases where the shared mem for dV and dK are larger than
     // the total amount of shared mem?
     // Epilogue swizzle for dV
+    // data flow: fragment -> smem_dv -> global 
     Smem_tile_dv smem_dv(&smem_[0], tidx);
     smem_dv.template store<elem_type>(acc_dv);
 

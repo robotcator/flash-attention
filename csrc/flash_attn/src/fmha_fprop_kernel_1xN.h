@@ -624,6 +624,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         if (!(params.attn_bias_ptr == nullptr)) {
             using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            fmha::clear(frag_bias);
             gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
             gmem_bias.move();
 
@@ -651,7 +652,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 #endif
             // Apply the attn mask.
-            softmax.apply_attn_bias(frag_bias);
+            softmax.apply_attn_bias(frag_bias, l);
 
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {

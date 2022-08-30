@@ -114,9 +114,10 @@ def _flash_attn(q, k, v, attn_mask=None, attn_bias=None):
     if attn_bias is not None:
         # import pdb; pdb.set_trace()
         if attn_bias.is_contiguous:
-            print ("attn_bias it not contiguous")
+            print ("attn_bias it not contiguous, stride is", attn_bias.stride())
         attn_bias = attn_bias.reshape([batch_size , no_heads, n, n]).contiguous()
         # attn_bias = attn_bias.reshape([batch_size , no_heads, n, n])
+        print ("attn_bias stride is", attn_bias.stride())
 
     print ("check shapes q_shape = {} k_shape = {} v_shape = {}".format(q.shape, k.shape, v.shape))
     print ("check shapes q_cu_shape = {} k_cu_shape = {}".format(q_cu_seqlens.shape, k_cu_seqlens.shape))
@@ -180,7 +181,7 @@ orig_tensor.requires_grad = True
 print ("origin shape: ", orig_tensor.shape)
 # [bs, seq, seq, head, c_dim]
 
-bias = torch.randn(
+bias = torch.ones(
     1, 1, head, seq_q, seq_k, dtype=dtype, device=device
 ) * 1
 
@@ -250,21 +251,21 @@ print ()
 
 # test backward
 
-# g = torch.randn_like(output3)
-# dq_ref, dk_ref, dv_ref  = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1), g)
-# dq_pt, dk_pt, dv_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
-# dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
+g = torch.randn_like(output3)
+dq_ref, dk_ref, dv_ref  = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1), g)
+dq_pt, dk_pt, dv_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
+dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
 
-# print("Output dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
-# print("Output dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
-# print("Output dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
+print("Output dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
+print("Output dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
+print("Output dV max diff: {0}".format( (dv - dv_ref).abs().max().item() ))
 
-# print("Pytorch dQ max diff: {0}".format( (dq_pt - dq_ref).abs().max().item() ))
-# print("Pytorch dK max diff: {0}".format( (dk_pt - dk_ref).abs().max().item() ))
-# print("Pytorch dV max diff: {0}".format( (dv_pt - dv_ref).abs().max().item() ))
+print("Pytorch dQ max diff: {0}".format( (dq_pt - dq_ref).abs().max().item() ))
+print("Pytorch dK max diff: {0}".format( (dk_pt - dk_ref).abs().max().item() ))
+print("Pytorch dV max diff: {0}".format( (dv_pt - dv_ref).abs().max().item() ))
 
-# print("Output dQ max diff with Pytorch: {0}".format( (dq - dq_pt).abs().max().item() ))
-# print("Output dK max diff with Pytorch: {0}".format( (dk - dk_pt).abs().max().item() ))
-# print("Output dV max diff with Pytorch: {0}".format( (dv - dv_pt).abs().max().item() ))
+print("Output dQ max diff with Pytorch: {0}".format( (dq - dq_pt).abs().max().item() ))
+print("Output dK max diff with Pytorch: {0}".format( (dk - dk_pt).abs().max().item() ))
+print("Output dV max diff with Pytorch: {0}".format( (dv - dv_pt).abs().max().item() ))
 
-# print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
+print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
