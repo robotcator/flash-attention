@@ -77,9 +77,6 @@ def _flash_attn(q, k, v, attn_mask=None):
     no_heads, n, c = q.shape[-3:]
     dtype = q.dtype
 
-    if attn_mask is not None:
-        attn_mask = attn_mask.half()
-
     # [*, B, N, H, C]
     q = q.transpose(-2, -3)
     k = k.transpose(-2, -3)
@@ -111,6 +108,7 @@ def _flash_attn(q, k, v, attn_mask=None):
     if attn_mask is not None:
         # import pdb; pdb.set_trace()
         attn_mask = attn_mask.reshape([bs * n, no_heads, n, n])
+        attn_mask = attn_mask.contiguous()
 
     out = flash_attn_unpadded_func(
         q,
