@@ -31,7 +31,7 @@ def _flash_attn_backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens
                          max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, causal):
     softmax_d = flash_attn_cuda.bwd(
         dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k,
-        max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, False, causal, None, attn_mask, None)
+        max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, False, causal, None, attn_mask, attn_bias)
     # if dk.isnan().any() or dk.isnan().any() or dv.isnan().any() or softmax_d.isnan().any():
     #     breakpoint()
     return dq, dk, dv, softmax_d
