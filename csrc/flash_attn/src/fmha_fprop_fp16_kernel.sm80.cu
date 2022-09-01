@@ -71,8 +71,8 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     auto kernel = &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, false, false, false, true, true>;
     dim3 grid(launch_params.params.b, launch_params.params.h);
 
-    // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-    // printf("block size: %d\n", Kernel_traits::THREADS);
+    printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
+    printf("block size: %d\n", Kernel_traits::THREADS);
     kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
         launch_params.params);
     FMHA_CHECK_CUDA(cudaPeekAtLastError());

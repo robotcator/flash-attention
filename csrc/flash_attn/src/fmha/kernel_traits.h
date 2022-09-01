@@ -77,6 +77,9 @@ struct FMHA_kernel_traits {
     // Gmem_tile_mma_bias
     using Gmem_tile_bias = fmha::Gmem_tile_mma_bias<Cta_tile_p>;
 
+    // Gmem_tile_mma_ds
+    using Gmem_tile_ds = fmha::Gmem_tile_mma_ds<Cta_tile_p>;
+
     // The shared memory tile to transpose S.
     using Smem_tile_st = fmha::Smem_tile_mma_transposed<Cta_tile_p>;
 

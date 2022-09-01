@@ -161,6 +161,9 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
     // TODO: load fun as s
 
+    using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
+    Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
+
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 
     // Allocate the global memory tile loader for K.
@@ -220,6 +223,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     if (!(params.attn_bias_ptr == nullptr)) {
         // TODO: mask move 
         gmem_bias.move(begin);
+        gmem_ds.move(begin);
     }
 
     if (!Is_first) {
@@ -481,8 +485,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
                         for (int jj = 0; jj < 4; jj ++) {
                             int st_row = 2 * mi + ii;
                             int st_col = 4 * ki + jj;
-                            printf("bwd softmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%d",
-                                threadIdx.x, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
+                            printf("bwd softmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%f\n",
+                                threadIdx.x, l, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
                         }
                     }
                 }
@@ -503,7 +507,6 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         softmax.template pack<elem_type>(frag_p);
 
         // Store s * dmask to smem for transpose
-        // how to test
         smem_s.store(frag_p);
 
         // Trigger the load for the next Q values.
@@ -594,6 +597,28 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         }
 
         softmax.template pack<elem_type>(frag_p);
+
+        // if constexpr (has_bias) {
+        if (!(params.attn_bias_ptr == nullptr)) {
+#ifdef DEBUG_PRINT
+        if ((blockIdx.x == 0) && (blockIdx.y == 0))  {
+            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
+                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
+                    for (int ii = 0; ii < 2; ii ++) {
+                        for (int jj = 0; jj < 4; jj ++) {
+                            int st_row = 2 * mi + ii;
+                            int st_col = 4 * ki + jj;
+                            printf("bwd dsoftmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%f\n",
+                                threadIdx.x, l, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
+                        }
+                    }
+                }
+            }
+            printf("\n");
+        }
+#endif
+            gmem_ds.store(softmax.elt_);
+        }
 
         // Store dp to smem for transpose
         smem_dp.store(frag_p);

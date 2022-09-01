@@ -329,8 +329,8 @@ void test_fwd_with_bias_mini() {
 }
 
 
-void dump_tensor(const std::string &tensor_name, at::Tensor &tensor) {
-    std::string file_name = tensor_name + ".data";
+void dump_tensor(const std::string &tensor_name, at::Tensor &tensor, const std::string &label) {
+    std::string file_name = label + "_" + tensor_name + ".data";
     std::ofstream file(file_name.c_str());
     // file << tensor_name << std::endl;
     // file << tensor << std::endl;
@@ -448,6 +448,8 @@ void test_fwd_with_bias(bool has_bias) {
                 attn_mask,
                 attn_bias
             );
+        dump_tensor("attn_output", ret[0], "has_bias");
+        dump_tensor("attn_lse", ret[1], "has_bias");
     }else{
         ret = mha_fwd(
                 q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
@@ -467,20 +469,30 @@ void test_fwd_with_bias(bool has_bias) {
                 attn_mask
                 // no bias
             );
+        dump_tensor("attn_output", ret[0], "");
+        dump_tensor("attn_lse", ret[1], "");
     }
 
     // ret: std::vector<at::Tensor> result = {o, softmax_lse};
     // [bs * seq * seq, head, head_dim]
     // [1 * 2 * 2, 1, 16]
-    std::cout << "fwd Ret vec size is " << ret.size();
+    // std::cout << "fwd Ret vec size is " << ret.size();
     // for (int i = 0; i < ret.size(); i ++) {
         // ret[i].cpu();
         // std::cout << ret[i] << std::endl;
     // }
-    dump_tensor("attn_output", ret[0]);
-    dump_tensor("attn_lse", ret[1]);
 
     at::Tensor dout_cpu = at::ones({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+
+    cnt = 0;
+    for (int i = 0; i < batch_size * max_seqlen_k_ * max_seqlen_k_; i ++) {
+    	for (int j = 0; j < nheads; j ++) {
+            for (int k = 0; k < headdim; k ++) {
+                dout_cpu[i][j][k] = cnt * 0.001;
+                cnt ++;
+            }
+	    }
+    }
     
     at::Tensor dq_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
     at::Tensor dk_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
@@ -493,6 +505,8 @@ void test_fwd_with_bias(bool has_bias) {
     std::vector<at::Tensor> bwd_ret;
 
     if (has_bias) {
+        // modify ret[1]
+        
         bwd_ret = mha_bwd(
             dout,
             q,
@@ -515,6 +529,9 @@ void test_fwd_with_bias(bool has_bias) {
             attn_mask,
             attn_bias
         );
+        dump_tensor("attn_dq", dq, "has_bias");
+        dump_tensor("attn_dk", dk, "has_bias");
+        dump_tensor("attn_dv", dv, "has_bias");
     }else{
         bwd_ret = mha_bwd(
             dout,
@@ -539,11 +556,10 @@ void test_fwd_with_bias(bool has_bias) {
             attn_mask
             // placeholder
         );
+        dump_tensor("attn_dq", dq, "");
+        dump_tensor("attn_dk", dk, "");
+        dump_tensor("attn_dv", dv, "");
     }
-
-    dump_tensor("attn_dq", dq);
-    dump_tensor("attn_dk", dk);
-    dump_tensor("attn_dv", dv);
 
     // std::cout << "bwd Ret vec size is " << ret.size();
     // for (int i = 0; i < bwd_ret.size(); i ++) {

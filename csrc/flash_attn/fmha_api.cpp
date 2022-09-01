@@ -173,7 +173,8 @@ void set_params_dgrad(FMHA_dgrad_params &params,
                       float softmax_scale,
                       bool is_causal,
                       void *attn_mask,
-                      void *attn_bias) {
+                      void *attn_bias,
+                      void *attn_ds) {
 
     set_params_fprop(params,
                      b, seqlen_q, seqlen_k, h, d,
@@ -204,6 +205,7 @@ void set_params_dgrad(FMHA_dgrad_params &params,
 
     // Softmax sum
     params.dsoftmax_sum = dsoftmax_sum_d;
+    params.attn_ds_ptr = attn_ds;
 }
 
 std::vector<at::Tensor>
@@ -418,6 +420,18 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     TORCH_CHECK(cu_seqlens_q.is_contiguous());
     TORCH_CHECK(cu_seqlens_k.is_contiguous());
 
+    if (attn_bias.has_value()) {
+        TORCH_CHECK(attn_bias.value().is_cuda());
+        TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_bias.value().is_contiguous());
+    }
+
+    if (attn_mask.has_value()) {
+        TORCH_CHECK(attn_mask.value().is_cuda());
+        TORCH_CHECK(attn_mask.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_mask.value().is_contiguous());
+    }
+
     const auto sizes = q.sizes();
 
     const int batch_size = cu_seqlens_q.numel() - 1;
@@ -442,6 +456,13 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
 
+    auto opts = q.options();
+    at::Tensor ds;
+    if (attn_bias.has_value()) {
+        ds = torch::empty({batch_size, num_heads, max_seqlen_q_, max_seqlen_k_}, opts.dtype(q_dtype));
+        ds.zero_();
+    }
+
     int blocksize_c = (head_size == 128 || (is_sm75 && head_size == 64)) ? 128 : 256;
     int max_seqlen_k = ((max_seqlen_k_ + blocksize_c - 1) / blocksize_c) * blocksize_c;
     if( max_seqlen_k_ <= 128 ) {
@@ -455,7 +476,7 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     // It's possible the softmax_lse_ from the fwd has a different length since blocksize_c could be different.
     auto softmax_lse = softmax_lse_.index({torch::indexing::Slice(), torch::indexing::Slice(), torch::indexing::Slice(torch::indexing::None, max_seqlen_q)}).contiguous();
 
-    auto opts = q.options();
+    
     auto softmax_d = torch::empty({batch_size, num_heads, max_seqlen_q}, opts.dtype(at::kFloat));
     at::Tensor dq_tmp;
     if (loop) { dq_tmp = torch::empty({total_q, num_heads, head_size}, opts.dtype(at::kFloat)); }
@@ -488,7 +509,10 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      softmax_scale,
                      is_causal,
                      attn_mask ? attn_mask->data_ptr() : nullptr,
-                     attn_bias ? attn_bias->data_ptr() : nullptr);
+                     attn_bias ? attn_bias->data_ptr() : nullptr,
+                     attn_bias ? ds.data_ptr() : nullptr);
+                     
+                    // used for dbias
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
         gen_, at::cuda::detail::getDefaultCUDAGenerator());
@@ -759,6 +783,7 @@ mha_bwd_block(const at::Tensor &dout,  // total x num_heads, x head_size
                      p_dropout,
                      softmax_scale,
                      is_causal,
+                     nullptr,
                      nullptr,
                      nullptr);
     params.blockmask = static_cast<int *>(blockmask.data_ptr());

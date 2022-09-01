@@ -47,6 +47,8 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
         }
         dim3 grid(params.b, params.h);
         kernel<<<grid, Kernel_traits::THREADS, smem_size_dq_dk_dv, stream>>>(params);
+        printf("bwd grid size: %d %d\n", params.b, params.h);
+        printf("bwd block size: %d\n", Kernel_traits::THREADS);
         FMHA_CHECK_CUDA(cudaPeekAtLastError());
     });
 }
