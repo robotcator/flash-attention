@@ -36,6 +36,15 @@ for i in range(batch_size * max_seqlen_k_):
                 bias_ref[i][j][k][l] = cnt * 0.1
                 cnt += 1
 
+# bias_ref = np.zeros([batch_size , nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
+# cnt = 0
+# for i in range(batch_size ):
+#     for j in range(nheads):
+#         for k in range(max_seqlen_q_):
+#             for l in range(max_seqlen_k_):
+#                 bias_ref[i][j][k][l] = cnt * 0.1
+#                 cnt += 1
+
 
 # dout = np.random.rand(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim).astype(dtype=dtypes)
 cnt = 0
@@ -254,6 +263,8 @@ def check_bwd_kernel(has_bias=False):
     attn_dq = np.genfromtxt("{}_attn_dq.data".format(prefix), delimiter=" ", dtype=np.float32)
     attn_dk = np.genfromtxt("{}_attn_dk.data".format(prefix), delimiter=" ", dtype=np.float32)
     attn_dv = np.genfromtxt("{}_attn_dv.data".format(prefix), delimiter=" ", dtype=np.float32)
+    if has_bias:
+        attn_dbias = np.genfromtxt("{}_attn_dbias.data".format(prefix), delimiter=" ", dtype=np.float32)
 
     attn_dq = attn_dq.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
     attn_dk = attn_dk.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
@@ -262,6 +273,9 @@ def check_bwd_kernel(has_bias=False):
     attn_dq = attn_dq.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
     attn_dk = attn_dk.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
     attn_dv = attn_dv.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
+
+    if has_bias:
+        attn_dbias = attn_dbias.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
     
     attn_dq = attn_dq.transpose(0, 2, 1, 3)
     attn_dk = attn_dk.transpose(0, 2, 1, 3)
@@ -274,11 +288,20 @@ def check_bwd_kernel(has_bias=False):
     print ("max error in dq: ", np.abs(attn_dq - dq).max(), )
     print ("max error in dk: ", np.abs(attn_dk - dk).max(), )
     print ("max error in dv: ", np.abs(attn_dv - dv).max(), )
+    if has_bias:
+        print ("max error in dq: ", np.abs(attn_dbias - dbias).max(), )
+        # print (np.abs(attn_dbias - dbias) > 0.001)
+        attn_ds = np.genfromtxt("{}_attn_ds.data".format(prefix), delimiter=" ", dtype=np.float32)
+        attn_ds = attn_ds.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+        print ("max error in ds: ", np.abs(attn_ds - ds).max(), )
+
 
     print ("same matrix check q: ", is_same_matrix(attn_dq, dq))
     print ("same matrix check k: ", is_same_matrix(attn_dk, dk))
     print ("same matrix check v: ", is_same_matrix(attn_dv, dv))
-
+    if has_bias:
+        import pdb; pdb.set_trace()
+        print ("same matrix check dbias: ", is_same_matrix(attn_dbias, dbias))
 
 def check_bwd_np(has_bias=False):
     print ("==== check bwd np ====")
@@ -481,10 +504,21 @@ def check_dsoftmax_p(softmax_data, has_bias=False):
     else:
         dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_)
 
+    if has_bias:
+        prefix = "has_bias"
+        print ("has bias on, prefix is ", prefix)
+    else:
+        prefix = ""
+
     # print ("q * k = p'shape = {} p = {}".format(p.shape, p))
     import pdb; pdb.set_trace()
     print ("max error in p: ", np.abs(ds[0, 0, :, :] - softmax_data[0, 0, :, :]).max(), )
     print ("same matrix check p: ", is_same_matrix(ds[0, 0, :, :], softmax_data[0, 0, :, :]))
+
+    attn_ds = np.genfromtxt("{}_attn_ds.data".format(prefix), delimiter=" ", dtype=np.float32)
+    attn_ds = attn_ds.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+
+    print ("max error in attn ds with softmax: ", np.abs(attn_ds[0, 0, :, :] - softmax_data[0, 0, :, :]).max(), )
     return
 
 

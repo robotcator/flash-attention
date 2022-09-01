@@ -27,6 +27,7 @@
  ******************************************************************************/
 
 #include <torch/extension.h>
+#include <torch/torch.h>
 #include <ATen/cuda/CUDAContext.h>
 
 #include "fmha.h"
@@ -420,18 +421,6 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     TORCH_CHECK(cu_seqlens_q.is_contiguous());
     TORCH_CHECK(cu_seqlens_k.is_contiguous());
 
-    if (attn_bias.has_value()) {
-        TORCH_CHECK(attn_bias.value().is_cuda());
-        TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
-        TORCH_CHECK(attn_bias.value().is_contiguous());
-    }
-
-    if (attn_mask.has_value()) {
-        TORCH_CHECK(attn_mask.value().is_cuda());
-        TORCH_CHECK(attn_mask.value().dtype() == q_dtype);
-        TORCH_CHECK(attn_mask.value().is_contiguous());
-    }
-
     const auto sizes = q.sizes();
 
     const int batch_size = cu_seqlens_q.numel() - 1;
@@ -455,6 +444,19 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     CHECK_SHAPE(dv, total_k, num_heads, head_size);
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
+
+    if (attn_bias.has_value()) {
+        TORCH_CHECK(attn_bias.value().is_cuda());
+        TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_bias.value().is_contiguous());
+        // check attn_bias shape
+    }
+
+    if (attn_mask.has_value()) {
+        TORCH_CHECK(attn_mask.value().is_cuda());
+        TORCH_CHECK(attn_mask.value().dtype() == q_dtype);
+        TORCH_CHECK(attn_mask.value().is_contiguous());
+    }
 
     auto opts = q.options();
     at::Tensor ds;
@@ -511,7 +513,6 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      attn_mask ? attn_mask->data_ptr() : nullptr,
                      attn_bias ? attn_bias->data_ptr() : nullptr,
                      attn_bias ? ds.data_ptr() : nullptr);
-                     
                     // used for dbias
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
@@ -528,7 +529,17 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     }
 
     launch(params, stream);
-    return { dq, dk, dv, softmax_d };
+
+    std::vector<at::Tensor> result = { dq, dk, dv, softmax_d };
+    at::Tensor dbias;
+    if (attn_bias.has_value()) {
+        auto size = attn_bias->sizes();
+        dbias = ds.reshape({ -1, size[0], size[1], size[2], size[3] }).sum({ 0 });
+        result.push_back( dbias );
+        result.push_back( ds );
+
+    }
+    return result;
 }
 
 std::vector<at::Tensor>

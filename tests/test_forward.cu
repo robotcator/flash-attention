@@ -505,8 +505,6 @@ void test_fwd_with_bias(bool has_bias) {
     std::vector<at::Tensor> bwd_ret;
 
     if (has_bias) {
-        // modify ret[1]
-        
         bwd_ret = mha_bwd(
             dout,
             q,
@@ -532,6 +530,8 @@ void test_fwd_with_bias(bool has_bias) {
         dump_tensor("attn_dq", dq, "has_bias");
         dump_tensor("attn_dk", dk, "has_bias");
         dump_tensor("attn_dv", dv, "has_bias");
+        dump_tensor("attn_dbias", bwd_ret[4], "has_bias");
+        dump_tensor("attn_ds", bwd_ret[5], "has_bias");
     }else{
         bwd_ret = mha_bwd(
             dout,

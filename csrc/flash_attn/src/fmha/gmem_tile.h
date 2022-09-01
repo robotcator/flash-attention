@@ -853,6 +853,7 @@ struct Gmem_tile_mma_ds {
     // Store to global memory.
     inline __device__ void store(const float (&softmax)[2 * M][4 * N]) {
         uint32_t preds;
+        uint32_t dst;
 
         #pragma unroll
         for( int mi = 0; mi < M; mi++ ) {
@@ -864,7 +865,6 @@ struct Gmem_tile_mma_ds {
                     for (int jj = 0; jj < 2; ++jj ) {
                         float tmp00 = softmax[2 * mi + ii][4 * ni + jj * 2];
                         float tmp01 = softmax[2 * mi + ii][4 * ni + jj * 2 + 1];
-                        uint32_t dst;
                         dst = fmha::float2_to_half2(tmp00, tmp01);
 
                         const int current_row = mi * ROWS + ii * 8;
