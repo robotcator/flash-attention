@@ -574,7 +574,7 @@ struct Gmem_tile_mma_mask {
                         ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                        preds[offset] = (current_row <= min(ROWS, actual_seqlen_q))
+                        preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
                                         && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
 #ifdef DEBUG_PRINT
                         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
@@ -730,7 +730,7 @@ struct Gmem_tile_mma_bias {
                         ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                        preds[offset] = (current_row <= min(ROWS, actual_seqlen_q))
+                        preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
                                         && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
 #ifdef DEBUG_PRINT
                         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
@@ -845,6 +845,14 @@ struct Gmem_tile_mma_ds {
         // the index of bs and head dim
         uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
         // row_offset = (uint32_t)(row * row_stride_in_bytes);
+#ifdef DEBUG_PRINT
+    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
+        printf("ds tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
+            tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
+        printf("ds bidb=%d, bidh=%d, param.h=%d, blockIdx.x=%d\n", binfo.bidb, binfo.bidh, params.h, blockIdx.x);
+        printf("\n");
+    }
+#endif
         row_offset += (uint32_t)(row * binfo.actual_seqlen_k * BYTES_PER_ELEMENT);
         // do we need to move col first if seklen_k > cols
         ptr_ += row_offset;
@@ -873,10 +881,22 @@ struct Gmem_tile_mma_ds {
                         char *ptrs = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                        preds = (current_row <= min(ROWS, actual_seqlen_q))
+                        preds = (current_row < min(ROWS, actual_seqlen_q))
                                         && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
 
+#ifdef DEBUG_PRINT
+    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
+        printf("ds store blockIdx.x=%d, mi=%d, ni=%d, ii=%d, jj=%d, current_row=%d, current_col=%d, float1=%f, float2=%f, begin=%p, ptrs=%p, preds=%d\n",
+            blockIdx.x, mi, ni, ii, jj, current_row, current_col, tmp00, tmp01, ptr_, ptrs, preds);
+    }
+#endif
                         if (preds) {
+#ifdef DEBUG_PRINT
+    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
+       printf("ds store blockIdx.x=%d in, mi=%d, ni=%d, ii=%d, jj=%d, ptrs=%p, dst=%ud, data=%ud\n", 
+            blockIdx.x, mi, ni, ii, jj, ptrs, dst, fmha::float2_to_half2(tmp00, tmp01));
+    }
+#endif
                             fmha::stg(ptrs, dst);
                         }
                     }

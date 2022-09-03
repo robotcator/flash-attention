@@ -618,6 +618,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         }
 #endif
             gmem_ds.store(softmax.elt_);
+            gmem_ds.move();
         }
 
         // Store dp to smem for transpose

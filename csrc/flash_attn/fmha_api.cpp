@@ -34,6 +34,7 @@
 
 #ifdef DDEBUG_PRINT
 #include "fmha_api.h"
+#include <fstream>
 #endif
 
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
@@ -463,6 +464,7 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     if (attn_bias.has_value()) {
         ds = torch::empty({batch_size, num_heads, max_seqlen_q_, max_seqlen_k_}, opts.dtype(q_dtype));
         ds.zero_();
+        TORCH_CHECK(ds.is_contiguous());
     }
 
     int blocksize_c = (head_size == 128 || (is_sm75 && head_size == 64)) ? 128 : 256;
@@ -533,11 +535,10 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     std::vector<at::Tensor> result = { dq, dk, dv, softmax_d };
     at::Tensor dbias;
     if (attn_bias.has_value()) {
+        // compare block reduce
         auto size = attn_bias->sizes();
         dbias = ds.reshape({ -1, size[0], size[1], size[2], size[3] }).sum({ 0 });
         result.push_back( dbias );
-        result.push_back( ds );
-
     }
     return result;
 }

@@ -518,7 +518,25 @@ def check_dsoftmax_p(softmax_data, has_bias=False):
     attn_ds = np.genfromtxt("{}_attn_ds.data".format(prefix), delimiter=" ", dtype=np.float32)
     attn_ds = attn_ds.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
 
+    attn_dbias = np.genfromtxt("{}_attn_dbias.data".format(prefix), delimiter=" ", dtype=np.float32)
+    attn_dbias = attn_ds.reshape(*bias_ref.shape)
+
     print ("max error in attn ds with softmax: ", np.abs(attn_ds[0, 0, :, :] - softmax_data[0, 0, :, :]).max(), )
+    print ("max error in attn ds with bwd: ", np.abs(attn_ds - ds).max(), )
+    print ("max error in attn dbias with bwd: ", np.abs(attn_dbias - dbias).max(), )
+    # for i in range(batch_size * max_seqlen_k_):
+    #     for j in range(nheads):
+    #         print ("max error in i = {}, j = {}, max_error = {} ".format(i, j, np.abs(attn_ds[i, j, :, :] - ds[i, j, :, :]).max(), ))
+    #         print (np.abs(attn_ds[i, j, :, :] - ds[i, j, :, :]) <= 0.001)
+    #         print ("attn_ds: ", attn_ds[i, j, :, :])
+    #         print ("ds: ", ds[i, j, :, :])
+
+    # for i in range(batch_size * max_seqlen_k_):
+    #     for j in range(nheads):
+    #         print ("max error in i = {}, j = {}, max_error = {} ".format(i, j, np.abs(attn_dbias[i, j, :, :] - dbias[i, j, :, :]).max(), ))
+    #         print (np.abs(attn_dbias[i, j, :, :] - dbias[i, j, :, :]) <= 0.001)
+    #         print ("attn_dbias: ", attn_dbias[i, j, :, :])
+    #         print ("dbias: ", dbias[i, j, :, :])
     return
 
 
@@ -540,10 +558,10 @@ if __name__ == '__main__':
     # check_fwd_kernel(has_bias=has_bias)
     # check_bwd_kernel(has_bias=has_bias)
 
-    # print ("====test kernel with bias====")
-    # has_bias = True
-    # check_fwd_kernel(has_bias=has_bias)
-    # check_bwd_kernel(has_bias=has_bias)
+    print ("====test kernel with bias====")
+    has_bias = True
+    check_fwd_kernel(has_bias=has_bias)
+    check_bwd_kernel(has_bias=has_bias)
 
     # print ("====test bwd kernel softmax without bias====")
     # has_bias = False
@@ -560,7 +578,7 @@ if __name__ == '__main__':
     # dsoftmax_data = parse_dsoftmax_load("output.log")
     # check_dsoftmax_p(softmax_data=dsoftmax_data, has_bias=has_bias)
 
-    print ("====test bwd kernel softmax with bias====")
-    has_bias = True
-    dsoftmax_data = parse_dsoftmax_load("output.log")
-    check_dsoftmax_p(softmax_data=dsoftmax_data, has_bias=has_bias)
+    # print ("====test bwd kernel softmax with bias====")
+    # has_bias = True
+    # dsoftmax_data = parse_dsoftmax_load("output.log")
+    # check_dsoftmax_p(softmax_data=dsoftmax_data, has_bias=has_bias)

@@ -340,6 +340,7 @@ void dump_tensor(const std::string &tensor_name, at::Tensor &tensor, const std::
 
     for (int i = 0; i < size; i ++) {
         file << flatten_tensor[i].item() << " ";
+        // file << flatten_tensor[i] << " ";
     }
     file << std::endl;
 }
@@ -531,7 +532,7 @@ void test_fwd_with_bias(bool has_bias) {
         dump_tensor("attn_dk", dk, "has_bias");
         dump_tensor("attn_dv", dv, "has_bias");
         dump_tensor("attn_dbias", bwd_ret[4], "has_bias");
-        dump_tensor("attn_ds", bwd_ret[5], "has_bias");
+        // dump_tensor("attn_ds", bwd_ret[5], "has_bias");
     }else{
         bwd_ret = mha_bwd(
             dout,
