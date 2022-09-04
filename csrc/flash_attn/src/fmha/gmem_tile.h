@@ -686,7 +686,8 @@ struct Gmem_tile_mma_bias {
         // The distance between two blocks (in bytes).
         // TODO: mask is [bs, head, seq_q, seq_k]
         // The block index.
-        uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
+        //  uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
+        uint32_t bidx = ( binfo.bidb % params.bias_mod_size ) * params.h + binfo.bidh;
 
         // the index of bs and head dim
         uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
@@ -697,7 +698,7 @@ struct Gmem_tile_mma_bias {
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
             tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
-        printf("bidb=%d, bidh=%d, param.h=%d\n", binfo.bidb, binfo.bidh, params.h);
+        printf("bidb=%d, bidh=%d, param.h=%d, bias_mod_size=%d\n", binfo.bidb, binfo.bidh, params.h, params.bias_mod_size);
         printf("\n");
     }
 #endif

@@ -63,7 +63,7 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     bool has_bias = !(launch_params.params.attn_bias_ptr == nullptr);
 
 #ifdef DEBUG_PRINT
-    printf ("has_attn=%d, has_bias=%d\n", has_attn, has_bias);
+    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d\n", has_attn, has_bias, launch_params.params.bias_mod_size);
 #endif
 
     // attn + bias on 

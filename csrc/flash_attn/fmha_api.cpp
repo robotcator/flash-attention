@@ -61,7 +61,8 @@ void set_params_fprop(FMHA_fprop_params &params,
                       float softmax_scale,
                       bool is_causal,
                       void *attn_mask,
-                      void *attn_bias
+                      void *attn_bias,
+                      int bias_mod_size
                       ) {
 
     Data_type acc_type = DATA_TYPE_FP32;
@@ -107,6 +108,7 @@ void set_params_fprop(FMHA_fprop_params &params,
     // attn mask & bias
     params.attn_mask_ptr = attn_mask;
     params.attn_bias_ptr = attn_bias;
+    params.bias_mod_size = bias_mod_size;
 
 
 #ifdef DEBUG_PRINT
@@ -176,7 +178,8 @@ void set_params_dgrad(FMHA_dgrad_params &params,
                       bool is_causal,
                       void *attn_mask,
                       void *attn_bias,
-                      void *attn_ds) {
+                      void *attn_ds,
+                      int bias_mod_size) {
 
     set_params_fprop(params,
                      b, seqlen_q, seqlen_k, h, d,
@@ -191,7 +194,8 @@ void set_params_dgrad(FMHA_dgrad_params &params,
                      softmax_scale,
                      is_causal,
                      attn_mask,
-                     attn_bias);
+                     attn_bias,
+                     bias_mod_size);
 
     // Set the pointers and strides.
     params.dq_ptr = dq.data_ptr();
@@ -272,16 +276,29 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
 
+    int bias_mod_size = 0;
     if (attn_bias.has_value()) {
         TORCH_CHECK(attn_bias.value().is_cuda());
         TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
         TORCH_CHECK(attn_bias.value().is_contiguous());
+
+        const auto bias_sizes = attn_bias->sizes();
+        // last two dimension
+        bias_mod_size = bias_sizes[0];
+        TORCH_CHECK(bias_sizes[1] == num_heads);
     }
 
     if (attn_mask.has_value()) {
         TORCH_CHECK(attn_mask.value().is_cuda());
         TORCH_CHECK(attn_mask.value().dtype() == q_dtype);
         TORCH_CHECK(attn_mask.value().is_contiguous());
+
+        const auto mask_sizes = attn_mask->sizes();
+        // last two dimension
+        const int mask_mod_size = mask_sizes[1];
+        TORCH_CHECK(mask_sizes[1] == 1 || mask_sizes[1] == num_heads);
+        std::cout << "mask head mode size: " <<  mask_mod_size << std::endl;
+        launch_params.params.mask_mod_size = mask_mod_size;
     }
 
     int blocksize_c = ((head_size == 128 && (is_dropout || !is_sm80)) || (is_sm75 && head_size == 64 && is_dropout)) ? 128 : 256;
@@ -335,7 +352,8 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
                      softmax_scale,
                      is_causal,
                      attn_mask ? attn_mask->data_ptr() : nullptr,
-                     attn_bias ? attn_bias->data_ptr() : nullptr
+                     attn_bias ? attn_bias->data_ptr() : nullptr,
+                     bias_mod_size
                      );
 
     run_fmha_fp16_sm80(launch_params, /*configure=*/ true);
@@ -446,11 +464,16 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
     CHECK_SHAPE(cu_seqlens_q, batch_size + 1);
     CHECK_SHAPE(cu_seqlens_k, batch_size + 1);
 
+    int bias_mod_size = 0;
     if (attn_bias.has_value()) {
         TORCH_CHECK(attn_bias.value().is_cuda());
         TORCH_CHECK(attn_bias.value().dtype() == q_dtype);
         TORCH_CHECK(attn_bias.value().is_contiguous());
         // check attn_bias shape
+        const auto bias_sizes = attn_bias->sizes();
+        // last two dimension
+        bias_mod_size = bias_sizes[0];
+        TORCH_CHECK(bias_sizes[1] == num_heads);
     }
 
     if (attn_mask.has_value()) {
@@ -514,7 +537,8 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
                      is_causal,
                      attn_mask ? attn_mask->data_ptr() : nullptr,
                      attn_bias ? attn_bias->data_ptr() : nullptr,
-                     attn_bias ? ds.data_ptr() : nullptr);
+                     attn_bias ? ds.data_ptr() : nullptr,
+                     bias_mod_size);
                     // used for dbias
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
@@ -647,7 +671,9 @@ mha_fwd_block(const at::Tensor &q,         // total_q x num_heads x head_size, t
                      softmax_scale,
                      is_causal,
                      nullptr,
-                     nullptr);
+                     nullptr,
+                     0);
+                    //  TODO: add mask / bias
     launch_params.params.blockmask = static_cast<int *>(blockmask.data_ptr());
 
     run_fmha_block_fp16_sm80(launch_params, /*configure=*/ true);
@@ -797,7 +823,8 @@ mha_bwd_block(const at::Tensor &dout,  // total x num_heads, x head_size
                      is_causal,
                      nullptr,
                      nullptr,
-                     nullptr);
+                     nullptr,
+                     0);
     params.blockmask = static_cast<int *>(blockmask.data_ptr());
 
     auto gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
