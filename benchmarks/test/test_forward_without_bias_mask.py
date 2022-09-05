@@ -107,7 +107,7 @@ def _flash_attn(q, k, v, attn_mask=None):
 
     if attn_mask is not None:
         # import pdb; pdb.set_trace()
-        attn_mask = attn_mask.reshape([bs * n, no_heads, n, n])
+        attn_mask = attn_mask.reshape([bs * n, no_heads, n, n]).contiguous()
 
     out = flash_attn_unpadded_func(
         q,

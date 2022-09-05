@@ -94,7 +94,7 @@ void test_fwd_with_mask(int has_mask) {
 	//     }
     // }
     
-    at::Tensor attn_mask = at::ones({batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_}, at::kHalf).tril().cuda();
+    at::Tensor attn_mask = 1 - at::ones({batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_}, at::kHalf).tril().cuda();
 
     c10::optional<at::Generator> gen_;
     c10::optional<at::Tensor> attn_bias;
@@ -688,6 +688,7 @@ int main(int argc, char** argv){
             }else{
                 has_bias = 0;
             }
+            std::cout << "has bias " << argv[2] << std::endl;
             test_fwd_with_bias(has_bias);
         }else if (strcmp(argv[1], "has_mask") == 0) {
             if (strcmp(argv[2], "true") == 0) {
@@ -695,6 +696,7 @@ int main(int argc, char** argv){
             }else{
                 has_masked = 0;
             }
+            std::cout << "has mask " << argv[2] << std::endl;
             test_fwd_with_mask(has_masked);
         }else{
             has_bias = 0;

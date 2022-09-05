@@ -1,8 +1,17 @@
 from audioop import bias
 from operator import truediv
-from socket import NI_NAMEREQD
 import numpy as np
 import torch
+
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test_np", required=False, help="test np implementation kernel with torch", type=bool, default=False)
+parser.add_argument("--has_bias", required=False, help="add bias in attention", type=bool, default=False)
+parser.add_argument("--has_mask", required=False, help="add mask in attention", type=bool, default=False)
+args = parser.parse_args()
+print(args)
+
 
 batch_size = 1
 nheads = 1
@@ -12,7 +21,6 @@ max_seqlen_q_ = seq
 max_seqlen_k_ = seq
 
 dtypes = np.float16
-
 
 q_cpu = np.zeros((batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim), dtype=dtypes)
 k_cpu = np.zeros((batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim), dtype=dtypes)
@@ -35,6 +43,9 @@ for i in range(batch_size * max_seqlen_k_):
             for l in range(max_seqlen_k_):
                 bias_ref[i][j][k][l] = cnt * 0.1
                 cnt += 1
+
+mask_ref = np.ones([batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
+mask_ref = (1 - np.tril(mask_ref)) * -1
 
 # bias_ref = np.zeros([batch_size , nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
 # cnt = 0
@@ -65,7 +76,7 @@ def softmax(logit):
     return probs
 
 
-def fwd(q, k, v, max_seqlen_q, bias=None):
+def fwd(q, k, v, max_seqlen_q, bias=None, mask=None):
     
     batch_size = int(q.shape[0] / max_seqlen_q)
     head_num = q.shape[1]
@@ -85,6 +96,13 @@ def fwd(q, k, v, max_seqlen_q, bias=None):
     
     if bias is not None:
         s = s + bias
+    
+    if mask is not None:
+        # s.masked_fill_(mask < 0, float('-inf'))
+        mask_np = np.ma.masked_where(mask < 0, s)
+        # np.ma.set_fill_value(mask_np, float('-inf'))
+        np.ma.set_fill_value(mask_np, float('-999'))
+        s = mask_np.filled()
 
     p = softmax(s)
 
@@ -94,8 +112,8 @@ def fwd(q, k, v, max_seqlen_q, bias=None):
     return s, p, o, q, k, v
 
 
-def bwd(dout, q, k, v, max_seqlen_q, bias=None):
-    s, p, o, _, _, _ = fwd(q, k, v, max_seqlen_q=max_seqlen_q, bias=bias)
+def bwd(dout, q, k, v, max_seqlen_q, bias=None, mask=None):
+    s, p, o, _, _, _ = fwd(q, k, v, max_seqlen_q=max_seqlen_q, bias=bias, mask=mask)
 
     batch_size = int(q.shape[0] / max_seqlen_q)
     head_num = q.shape[1]
@@ -149,23 +167,26 @@ def bwd(dout, q, k, v, max_seqlen_q, bias=None):
     return dq, dk, dv, ds, dp, dbias
 
 
-def fwd_pt(q_pt, k_pt, v_pt, bias=None):
+def fwd_pt(q_pt, k_pt, v_pt, bias=None, mask=None):
     s = torch.matmul(q_pt, k_pt.transpose(-1, -2))
 
     if bias is not None:
         s = s + bias
     
+    if mask is not None:
+        s.masked_fill_(mask < 0, float('-999'))
+
     p = torch.nn.functional.softmax(s, dim=-1)
 
     o = torch.matmul(p, v_pt)
     return s, p, o
 
 
-def bwd_pt(dout, q, k, v, max_seqlen_q, bias=None):
+def bwd_pt(dout, q, k, v, max_seqlen_q, bias=None, mask=None):
     # q is [batch * seq * seq, head, head_dim]
-    q_pt, k_pt, v_pt, dout_pt, bias_pt = prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=bias)
+    q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=bias, mask=mask)
 
-    s, p, o = fwd_pt(q_pt, k_pt, v_pt, bias=bias_pt)
+    s, p, o = fwd_pt(q_pt, k_pt, v_pt, bias=bias_pt, mask=mask_pt)
 
     if bias is None:
         dq, dk, dv = torch.autograd.grad(o, (q_pt, k_pt, v_pt), dout_pt)
@@ -191,18 +212,22 @@ def compute_lse(s):
     return softmax_lse
 
 
-def check_fwd_kernel(has_bias=False):
+def check_fwd_kernel(has_bias=False, has_mask=False):
     print ("==== check fwd kernel with np ====")
     if has_bias:
-        s, p, o, _, _, _ = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=bias_ref)
+        s, p, o, _, _, _ = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=bias_ref, mask=None)
+    elif has_mask:
+        s, p, o, _, _, _ = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=None, mask=mask_ref)
     else:
-        s, p, o, _, _, _ = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_k_)
+        s, p, o, _, _, _ = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=None, mask=None)
     # print ("q * k = p'shape = {} p = {}".format(p.shape, p))
 
     # attn_output = np.loadtxt("attn_output.data", delimiter=" ")
     if has_bias:
         prefix = "has_bias"
         print ("has bias on, prefix is ", prefix)
+    elif has_mask:
+        prefix = "has_mask"
     else:
         prefix = ""
     
@@ -221,8 +246,6 @@ def check_fwd_kernel(has_bias=False):
     lse_ref = compute_lse(s)
     lse_ref = lse_ref.reshape(batch_size * max_seqlen_k_ , nheads, max_seqlen_q_)
     # print ("ref lse: ", lse_ref)
-
-    import pdb; pdb.set_trace()
 
     print ("lse_ref shape = {}, attn_lse shape = {}".format(lse_ref.shape, attn_lse.shape))
     print ("lse max error: ", np.abs(lse_ref - attn_lse).max())
@@ -247,16 +270,21 @@ def is_same_matrix(pred, gt, abs_eps=0.01, relative_rps=0.03, verbose=False):
         return True
 
 
-def check_bwd_kernel(has_bias=False):
+def check_bwd_kernel(has_bias=False, has_mask=False):
     print ("==== check bwd kernel with np ====")
     if has_bias:
-        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=bias_ref)
+        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=bias_ref, mask=None)
+    elif has_mask:
+        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=None, mask=mask_ref)
     else:
-        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_)
+        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_k_, bias=None, mask=None)
 
     if has_bias:
         prefix = "has_bias"
         print ("has bias on, prefix is ", prefix)
+    elif has_mask:
+        prefix = "has_mask"
+        print ("has mask on, prefix is ", prefix)
     else:
         prefix = ""
 
@@ -291,9 +319,13 @@ def check_bwd_kernel(has_bias=False):
     if has_bias:
         print ("max error in dq: ", np.abs(attn_dbias - dbias).max(), )
         # print (np.abs(attn_dbias - dbias) > 0.001)
-        attn_ds = np.genfromtxt("{}_attn_ds.data".format(prefix), delimiter=" ", dtype=np.float32)
-        attn_ds = attn_ds.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
-        print ("max error in ds: ", np.abs(attn_ds - ds).max(), )
+        # attn_ds = np.genfromtxt("{}_attn_ds.data".format(prefix), delimiter=" ", dtype=np.float32)
+        # attn_ds = attn_ds.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+        # print ("max error in ds: ", np.abs(attn_ds - ds).max(), )
+        
+        attn_dbias = np.genfromtxt("{}_attn_dbias.data".format(prefix), delimiter=" ", dtype=np.float32)
+        attn_dbias = attn_dbias.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+        print ("max error in dbias: ", np.abs(attn_dbias - dbias).max(), )
 
 
     print ("same matrix check q: ", is_same_matrix(attn_dq, dq))
@@ -303,14 +335,15 @@ def check_bwd_kernel(has_bias=False):
         import pdb; pdb.set_trace()
         print ("same matrix check dbias: ", is_same_matrix(attn_dbias, dbias))
 
+
 def check_bwd_np(has_bias=False):
     print ("==== check bwd np ====")
     if has_bias:
-        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref)
-        dq_pt, dk_pt, dv_pt, dbias_pt = bwd_pt(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref)
+        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref, mask=mask_ref)
+        dq_pt, dk_pt, dv_pt, dbias_pt = bwd_pt(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref, mask=mask_ref)
     else:
-        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None)
-        dq_pt, dk_pt, dv_pt, dbias_pt = bwd_pt(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None)
+        dq, dk, dv, ds, dp, dbias = bwd(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None, mask=None)
+        dq_pt, dk_pt, dv_pt, dbias_pt = bwd_pt(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None, mask=None)
 
     assert (dq.shape == dq_pt.detach().cpu().numpy().shape), "oh dq shape didn't match"
     assert (dk.shape == dk_pt.detach().cpu().numpy().shape), "oh dk shape didn't match"
@@ -327,7 +360,7 @@ def check_bwd_np(has_bias=False):
     return 
 
 
-def prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=None):
+def prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=None, mask=None):
     q_pt = torch.from_numpy(q.copy())
     k_pt = torch.from_numpy(k.copy())
     v_pt = torch.from_numpy(v.copy())
@@ -354,25 +387,30 @@ def prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=None):
     else:
         bias_pt = None
 
+    if mask is not None:
+        mask_pt = torch.from_numpy(mask.copy()).cuda()
+    else:
+        mask_pt = None
+
     q_pt.requires_grad = True
     k_pt.requires_grad = True
     v_pt.requires_grad = True
 
-    return q_pt, k_pt, v_pt, dout_pt, bias_pt
+    return q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt
 
 
-def check_fwd_np(has_bias=False):
+def check_fwd_np(has_bias=False, has_atten=False):
     print ("==== check fwd np ====")
     if has_bias:
-        s, p, o, q, k, v = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref)
+        s, p, o, q, k, v = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref, mask=mask_ref)
 
-        q_pt, k_pt, v_pt, dout_pt, bias_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref)
-        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias_pt)
+        q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref, mask=mask_ref)
+        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias_pt, mask_pt)
     else:
-        s, p, o, q, k, v = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_)
+        s, p, o, q, k, v = fwd(q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None, mask=None)
 
-        q_pt, k_pt, v_pt, dout_pt, _ = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_)
-        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt)
+        q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_)
+        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias=None, mask=None)
 
     def check_input(a, b):
         print ("max error in input: ", np.abs(a - b).max())
@@ -553,15 +591,17 @@ if __name__ == '__main__':
     # check_bwd_np(has_bias=has_bias)
     # print ("====test with bias====")
 
-    # print ("====test kernel without bias====")
-    # has_bias = False
+    print ("====test kernel without bias====")
+    has_bias = args.has_bias
+    has_mask = args.has_mask
+
+    check_fwd_kernel(has_bias=has_bias, has_mask=has_mask)
+    check_bwd_kernel(has_bias=has_bias, has_mask=has_mask)
+
+    # print ("====test kernel with bias====")
+    # has_bias = True
     # check_fwd_kernel(has_bias=has_bias)
     # check_bwd_kernel(has_bias=has_bias)
-
-    print ("====test kernel with bias====")
-    has_bias = True
-    check_fwd_kernel(has_bias=has_bias)
-    check_bwd_kernel(has_bias=has_bias)
 
     # print ("====test bwd kernel softmax without bias====")
     # has_bias = False
