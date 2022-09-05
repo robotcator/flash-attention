@@ -4,16 +4,34 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <iostream>
 #include <fstream>
+#include <cstring>
+#include <string>
 
 
-void test_fwd_with_mask() {
+void dump_tensor(const std::string &tensor_name, at::Tensor &tensor, const std::string &label) {
+    std::string file_name = label + "_" + tensor_name + ".data";
+    std::ofstream file(file_name.c_str());
+    // file << tensor_name << std::endl;
+    // file << tensor << std::endl;
+    std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
+    auto flatten_tensor = tensor.flatten();
+    auto size = flatten_tensor.numel();
+
+    for (int i = 0; i < size; i ++) {
+        file << flatten_tensor[i].item() << " ";
+        // file << flatten_tensor[i] << " ";
+    }
+    file << std::endl;
+}
+
+void test_fwd_with_mask(int has_mask) {
     int batch_size = 1;
     int nheads = 1;
     int headdim = 16;
-    int max_seqlen_q_ = 128; 
-    int max_seqlen_k_ = 128;
+    int max_seqlen_q_ = 8; 
+    int max_seqlen_k_ = 8;
     
-    float softmax_scale = 0.1;
+    float softmax_scale = 1;
     
     bool zero_tensors = false;
     bool is_causal = false;
@@ -62,26 +80,49 @@ void test_fwd_with_mask() {
     auto cu_seqlens_q = cu_seqlens_q_cpu.cuda();
     auto cu_seqlens_k = cu_seqlens_k_cpu.cuda();
     
-    at::Tensor attn_mask = at::ones({batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_}, at::kHalf).cuda();
+    // at::Tensor attn_mask = at::ones({batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_}, at::kHalf).cuda();
 
-    cnt = 0;
-    for (int i = 0; i < batch_size * max_seqlen_k_; i ++) {
-    	for (int j = 0; j < nheads; j ++) {
-            for (int k = 0; k < max_seqlen_q_; k ++) {
-                for (int l = 0; l < max_seqlen_k_; l ++) {
-                    attn_mask[i][j][k][l] = cnt * 0.001;
-                    cnt ++;
-                }
-            }
-	    }
-    }
+    // cnt = 0;
+    // for (int i = 0; i < batch_size * max_seqlen_k_; i ++) {
+    // 	for (int j = 0; j < nheads; j ++) {
+    //         for (int k = 0; k < max_seqlen_q_; k ++) {
+    //             for (int l = 0; l < max_seqlen_k_; l ++) {
+    //                 attn_mask[i][j][k][l] = cnt * 0.001;
+    //                 cnt ++;
+    //             }
+    //         }
+	//     }
+    // }
     
+    at::Tensor attn_mask = at::ones({batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_}, at::kHalf).tril().cuda();
+
     c10::optional<at::Generator> gen_;
     c10::optional<at::Tensor> attn_bias;
 
     // std::cout << "attn bias" << attn_bias << std::endl;
-
-    std::vector<at::Tensor> ret = mha_fwd(
+    std::vector<at::Tensor> ret;
+    if (has_mask) {
+        ret = mha_fwd(
+                q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
+                k,         // total_k x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
+                v,         // total_k x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
+                cu_seqlens_q,  // b + 1
+                cu_seqlens_k,  // b + 1
+                max_seqlen_q_,
+                max_seqlen_k_,
+                0.0,
+                softmax_scale,
+                zero_tensors,
+                is_causal,
+                return_softmax,
+                gen_,
+                attn_mask,
+                attn_bias
+            );
+            dump_tensor("attn_output", ret[0], "has_mask");
+            dump_tensor("attn_lse", ret[1], "has_mask");
+    }else{
+        ret = mha_fwd(
             q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
             k,         // total_k x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
             v,         // total_k x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
@@ -95,14 +136,95 @@ void test_fwd_with_mask() {
             is_causal,
             return_softmax,
             gen_,
+            attn_bias,
+            attn_bias
+        );
+        dump_tensor("attn_output", ret[0], "");
+        dump_tensor("attn_lse", ret[1], "");
+    }
+
+    // std::cout << "Ret vec size is " << ret.size();
+    // for (int i = 0; i < ret.size(); i ++) {
+    //     ret[i].cpu();
+    //     std::cout << ret[i] << std::endl;
+    // }
+
+    at::Tensor dout_cpu = at::ones({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+
+    cnt = 0;
+    for (int i = 0; i < batch_size * max_seqlen_k_ * max_seqlen_k_; i ++) {
+    	for (int j = 0; j < nheads; j ++) {
+            for (int k = 0; k < headdim; k ++) {
+                dout_cpu[i][j][k] = cnt * 0.001;
+                cnt ++;
+            }
+	    }
+    }
+    
+    at::Tensor dq_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    at::Tensor dk_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+    at::Tensor dv_cpu = at::zeros({batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim}, at::kHalf);
+
+    auto dout = dout_cpu.cuda();
+    auto dq = dq_cpu.cuda();
+    auto dk = dk_cpu.cuda();
+    auto dv = dv_cpu.cuda();
+    std::vector<at::Tensor> bwd_ret;
+
+    if (has_mask) {
+        bwd_ret = mha_bwd(
+            dout,
+            q,
+            k,
+            v,
+            ret[0],
+            ret[1],
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,  // b + 1
+            cu_seqlens_k,  // b + 1
+            max_seqlen_q_,
+            max_seqlen_k_,
+            0.0,
+            softmax_scale,
+            zero_tensors,
+            is_causal,
+            gen_,
             attn_mask,
             attn_bias
-	    );
-
-    std::cout << "Ret vec size is " << ret.size();
-    for (int i = 0; i < ret.size(); i ++) {
-        ret[i].cpu();
-        std::cout << ret[i] << std::endl;
+        );
+        dump_tensor("attn_dq", dq, "has_mask");
+        dump_tensor("attn_dk", dk, "has_mask");
+        dump_tensor("attn_dv", dv, "has_mask");
+        // dump_tensor("attn_ds", bwd_ret[5], "has_mask");
+    }else{
+        bwd_ret = mha_bwd(
+            dout,
+            q,
+            k, 
+            v, 
+            ret[0],
+            ret[1],
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,  // b + 1
+            cu_seqlens_k,  // b + 1
+            max_seqlen_q_,
+            max_seqlen_k_,
+            0.0,
+            softmax_scale,
+            zero_tensors,
+            is_causal,
+            gen_,
+            attn_bias,
+            attn_bias
+            // placeholder
+        );
+        dump_tensor("attn_dq", dq, "");
+        dump_tensor("attn_dk", dk, "");
+        dump_tensor("attn_dv", dv, "");
     }
 }
 
@@ -114,7 +236,7 @@ void test_fwd_with_mask_mini() {
     int max_seqlen_q_ = 2; 
     int max_seqlen_k_ = 2;
     
-    float softmax_scale = 0.1;
+    float softmax_scale = 1.0;
     
     bool zero_tensors = false;
     bool is_causal = false;
@@ -329,23 +451,6 @@ void test_fwd_with_bias_mini() {
 }
 
 
-void dump_tensor(const std::string &tensor_name, at::Tensor &tensor, const std::string &label) {
-    std::string file_name = label + "_" + tensor_name + ".data";
-    std::ofstream file(file_name.c_str());
-    // file << tensor_name << std::endl;
-    // file << tensor << std::endl;
-    std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
-    auto flatten_tensor = tensor.flatten();
-    auto size = flatten_tensor.numel();
-
-    for (int i = 0; i < size; i ++) {
-        file << flatten_tensor[i].item() << " ";
-        // file << flatten_tensor[i] << " ";
-    }
-    file << std::endl;
-}
-
-
 void test_fwd_with_bias(bool has_bias) {
     int batch_size = 1;
     int nheads = 1;
@@ -537,8 +642,8 @@ void test_fwd_with_bias(bool has_bias) {
         bwd_ret = mha_bwd(
             dout,
             q,
-            k, 
-            v, 
+            k,
+            v,
             ret[0],
             ret[1],
             dq,
@@ -572,11 +677,30 @@ void test_fwd_with_bias(bool has_bias) {
 int main(int argc, char** argv){
     // test_fwd();
     // test_fwd_with_bias_mini();
-    bool has_bias = false;
-    if( argc == 2 ) {
+    int has_bias = 0;
+    int has_masked = 0;
+
+    if ( argc >= 2 ) {
         std::cout << "argv: " << argv[1] << std::endl;
-        has_bias = true;
+        if (strcmp(argv[1], "has_bias") == 0) {
+            if (strcmp(argv[2], "true") == 0) {
+                has_bias = 1;
+            }else{
+                has_bias = 0;
+            }
+            test_fwd_with_bias(has_bias);
+        }else if (strcmp(argv[1], "has_mask") == 0) {
+            if (strcmp(argv[2], "true") == 0) {
+                has_masked = 1;
+            }else{
+                has_masked = 0;
+            }
+            test_fwd_with_mask(has_masked);
+        }else{
+            has_bias = 0;
+            has_masked = 0;
+            std::cout << "no paramter found" << std::endl;
+        }
     }
-    test_fwd_with_bias(has_bias);
     return 0;
 }

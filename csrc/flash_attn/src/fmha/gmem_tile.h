@@ -530,7 +530,8 @@ struct Gmem_tile_mma_mask {
         // The distance between two blocks (in bytes).
         // TODO: mask is [bs * seq, head, seq_q, seq_k]
         // The block index.
-        uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
+        // uint32_t bidx = binfo.bidb * params.h + binfo.bidh;
+        uint32_t bidx = binfo.bidb * params.h + (binfo.bidh % params.mask_head_mod_size);
 
         // the index of bs and head dim
         uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
