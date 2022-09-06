@@ -482,6 +482,7 @@ struct Gmem_tile_mma_mask {
         , actual_seqlen_k(binfo.actual_seqlen_k)
         , tidx_(tidx)
         , loop_step_idx(loop_step_idx)
+        , mask_seq_mod_size(params.mask_seq_mod_size)
     {
         row_stride_in_bytes = binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
         
@@ -512,15 +513,19 @@ struct Gmem_tile_mma_mask {
         uint32_t bidx = binfo.bidb * params.h + (binfo.bidh % params.mask_head_mod_size);
 
         // the index of bs and head dim
-        uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
-        // row_offset = (uint32_t)(row * row_stride_in_bytes);
-        row_offset += (uint32_t)(row * binfo.actual_seqlen_k * BYTES_PER_ELEMENT);   
+        // uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
+        // row_offset += (uint32_t)(row * binfo.actual_seqlen_k * BYTES_PER_ELEMENT);
+
+        // to support the mask last two dimension 
+        uint32_t row_offset = bidx * params.mask_seq_mod_size * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
+        row_offset += (uint32_t)( (row % params.mask_seq_mod_size) * binfo.actual_seqlen_k * BYTES_PER_ELEMENT); 
 
 #ifdef DEBUG_PRINT
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
             tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
-        printf("bidb=%d, bidh=%d, param.h=%d\n", binfo.bidb, binfo.bidh, params.h);
+        printf("bidb=%d, bidh=%d, param.h=%d, mask_head_mod_size=%d, mask_seq_mod_size=%d\n", 
+            binfo.bidb, binfo.bidh, params.h, params.mask_head_mod_size, params.mask_seq_mod_size);
         printf("\n");
     }
 #endif
@@ -550,7 +555,11 @@ struct Gmem_tile_mma_mask {
                         // const int current_col = ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
                         // 8 is actually col of half data now, for more general case ?
                         //  the row is already in the right position
-                        ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
+                        // ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
+                        //                (uint32_t)current_col * BYTES_PER_ELEMENT;
+
+                        // to support the mask last two dimension
+                        ptrs[offset] = ptr_ + (uint32_t)(current_row % mask_seq_mod_size) * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
                         preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
@@ -580,7 +589,8 @@ struct Gmem_tile_mma_mask {
     }
 
     inline __device__ void move(const int steps = 1) {
-        ptr_ += (uint32_t)ROWS * row_stride_in_bytes * steps;
+        // to support the mask last two dimension
+        ptr_ += (uint32_t)(ROWS % mask_seq_mod_size) * row_stride_in_bytes * steps;
         this->actual_seqlen_q -= ROWS * steps;
     }
 
@@ -592,6 +602,7 @@ struct Gmem_tile_mma_mask {
     char *ptr_;
     int actual_seqlen_q;
     int actual_seqlen_k;
+    int mask_seq_mod_size;
     const int tidx_;
 };
 
@@ -839,6 +850,7 @@ struct Gmem_tile_mma_ds {
     }
 
     // Store to global memory.
+    template<typename elem_type>
     inline __device__ void store(const float (&softmax)[2 * M][4 * N]) {
         uint32_t preds;
         uint32_t dst;
@@ -853,7 +865,8 @@ struct Gmem_tile_mma_ds {
                     for (int jj = 0; jj < 2; ++jj ) {
                         float tmp00 = softmax[2 * mi + ii][4 * ni + jj * 2];
                         float tmp01 = softmax[2 * mi + ii][4 * ni + jj * 2 + 1];
-                        dst = fmha::float2_to_half2(tmp00, tmp01);
+                        // dst = fmha::float2_to_half2(tmp00, tmp01);
+                        dst = fmha::float2_pack<elem_type>(tmp00, tmp01);
 
                         const int current_row = mi * ROWS + ii * 8;
                         const int current_col = loop_step_idx * Cta_tile::N + ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;

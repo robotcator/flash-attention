@@ -99,7 +99,8 @@ def fwd(q, k, v, max_seqlen_q, bias=None, mask=None):
     
     if mask is not None:
         # s.masked_fill_(mask < 0, float('-inf'))
-        mask_np = np.ma.masked_where(mask < 0, s)
+        mask_broad = np.broadcast_to(mask, s.shape)
+        mask_np = np.ma.masked_where(mask_broad < 0, s)
         # np.ma.set_fill_value(mask_np, float('-inf'))
         np.ma.set_fill_value(mask_np, float('-999'))
         s = mask_np.filled()
@@ -177,6 +178,8 @@ def fwd_pt(q_pt, k_pt, v_pt, bias=None, mask=None):
         s.masked_fill_(mask < 0, float('-999'))
 
     p = torch.nn.functional.softmax(s, dim=-1)
+    # from unicore.modules import softmax_dropout
+    # p = softmax_dropout(s, dropout_prob=0, is_training=True, mask=mask, bias=bias)
 
     o = torch.matmul(p, v_pt)
     return s, p, o
@@ -585,11 +588,11 @@ if __name__ == '__main__':
     # check_bwd_np(has_bias=has_bias)
     # print ("====test without bias====")
 
-    # print ("====test with bias====")
-    # has_bias = True
-    # check_fwd_np(has_bias=has_bias)
-    # check_bwd_np(has_bias=has_bias)
-    # print ("====test with bias====")
+    print ("====test with bias====")
+    has_bias = True
+    check_fwd_np(has_bias=has_bias)
+    check_bwd_np(has_bias=has_bias)
+    print ("====test with bias====")
 
     print ("====test kernel without bias====")
     has_bias = args.has_bias

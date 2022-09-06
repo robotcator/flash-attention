@@ -76,6 +76,7 @@ struct FMHA_fprop_params : public Qkv_params {
     // The attn mask matrix
     void * __restrict__ attn_mask_ptr;
     int mask_head_mod_size;
+    int mask_seq_mod_size;
 
     // The attn bias matrix
     void * __restrict__ attn_bias_ptr;

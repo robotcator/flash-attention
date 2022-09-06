@@ -617,7 +617,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
             printf("\n");
         }
 #endif
-            gmem_ds.store(softmax.elt_);
+            gmem_ds.template store<elem_type>(softmax.elt_);
             gmem_ds.move();
         }
 
