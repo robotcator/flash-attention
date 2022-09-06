@@ -569,7 +569,7 @@ mha_bwd(const at::Tensor &dout,  // total_q x num_heads, x head_size
 
     launch(params, stream);
 
-    std::vector<at::Tensor> result = { dq, dk, dv, softmax_d };
+    std::vector<at::Tensor> result = { softmax_d };
     at::Tensor dbias;
     if (attn_bias.has_value()) {
         // compare block reduce

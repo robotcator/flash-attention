@@ -132,7 +132,7 @@ def _flash_attn(q, k, v, attn_mask=None, attn_bias=None):
         k_cu_seqlens,
         q_max_s,
         k_max_s,
-        attn_mask=None,
+        attn_mask=attn_mask,
         attn_bias=attn_bias,
         dropout_p = 0.,
         softmax_scale = 1., # q has been scaled already
@@ -181,12 +181,13 @@ orig_tensor.requires_grad = True
 print ("origin shape: ", orig_tensor.shape)
 # [bs, seq, seq, head, c_dim]
 
-bias = torch.ones(
+bias = torch.randn(
     1, 1, head, seq_q, seq_k, dtype=dtype, device=device
-) * 1
+)
 
 print ("bias shape: ", bias.shape)
 bias_broadcast = bias.expand([bs, seq, head, seq_q, seq_k])
+bias_broadcast.requires_grad = True
 print ("bias_broadcast shape: ", bias_broadcast.shape)
 
 # print ("bias_broadcast: ", bias_broadcast)
@@ -252,9 +253,15 @@ print ()
 # test backward
 
 g = torch.randn_like(output3)
-dq_ref, dk_ref, dv_ref  = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1), g)
-dq_pt, dk_pt, dv_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2), g)
-dq, dk, dv, = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash), g)
+
+# dq_ref, dk_ref, dv_ref,  = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1, ), g)
+# dq_pt, dk_pt, dv_pt,  = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2, ), g)
+# dq, dk, dv,  = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash, ), g)
+
+dq_ref, dk_ref, dv_ref, dbias_ref = torch.autograd.grad(output_ref, (normal_attn_v1, normal_attn_v1, normal_attn_v1, bias_broadcast), g)
+dq_pt, dk_pt, dv_pt, dbias_pt = torch.autograd.grad(output_pt, (normal_attn_v2, normal_attn_v2, normal_attn_v2, bias_broadcast), g)
+dq, dk, dv, dbias = torch.autograd.grad(output3, (normal_attn_flash, normal_attn_flash, normal_attn_flash, bias_broadcast), g)
+
 
 print("Output dQ max diff: {0}".format( (dq - dq_ref).abs().max().item() ))
 print("Output dK max diff: {0}".format( (dk - dk_ref).abs().max().item() ))
@@ -268,4 +275,13 @@ print("Output dQ max diff with Pytorch: {0}".format( (dq - dq_pt).abs().max().it
 print("Output dK max diff with Pytorch: {0}".format( (dk - dk_pt).abs().max().item() ))
 print("Output dV max diff with Pytorch: {0}".format( (dv - dv_pt).abs().max().item() ))
 
-print ("less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
+print ("dq less than twice error: ", ((dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()) )
+print ("dk less than twice error: ", ((dk - dk_ref).abs().max().item() <= 2 * (dk_pt - dk_ref).abs().max().item()) )
+print ("dv less than twice error: ", ((dv - dv_ref).abs().max().item() <= 2 * (dv_pt - dv_ref).abs().max().item()) )
+
+if dbias is not None:
+    print ("dbias less than twice error: ", ((dbias - dbias_ref).abs().max().item() <= 2 * (dbias_pt - dbias_ref).abs().max().item()) )
+
+assert (dq - dq_ref).abs().max().item() <= 2 * (dq_pt - dq_ref).abs().max().item()
+if dbias is not None:
+    assert (dbias - dbias_ref).abs().max().item() <= 2 * (dbias_pt - dbias_ref).abs().max().item()

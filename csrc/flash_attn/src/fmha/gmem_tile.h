@@ -95,14 +95,6 @@ struct Gmem_tile_qkv {
                 threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_LDG, LDGS);
             printf("\n");
         }
-        if ((threadIdx.x == 2) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-            printf("use_seqlen_q=%d\n", use_seqlen_q);
-            printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, tidx=%d, row=%d, col=%d, THREADS_PER_ROW=%d\n",
-                threadIdx.x, blockIdx.x, blockIdx.y, tidx, row, col, THREADS_PER_ROW);
-            printf("threadIdx.x=%d, threadIdx.x=%d, blockIdx.y=%d, row_offset=%d ROWs=%d, COLS=%d, BYTES_PER_ROW=%d, THREADS_PER_ROW=%d, ROWS_PER_LDG=%d, LDGS=%d\n", 
-                threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_LDG, LDGS);
-            printf("\n");
-        }
 #endif        
         // row_offset += (int64_t)((binfo.sum_s * NUM_MATS + qkv_offset) * binfo.h + binfo.bidh) * BYTES_PER_ROW;
         row_offset += (uint32_t)(binfo.bidh * head_stride_in_elts * BYTES_PER_ELEMENT);
@@ -114,12 +106,6 @@ struct Gmem_tile_qkv {
             threadIdx.x, threadIdx.x, blockIdx.y, row_offset, BYTES_PER_LDG);
             printf("\n");
         }
-        // if ((threadIdx.x == 2) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-        //     printf("use_seqlen_q=%d\n", use_seqlen_q);
-        //     printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, row_offset=%d BYTES_PER_LDG=%d\n", 
-        //     threadIdx.x, blockIdx.x, blockIdx.y, row_offset, BYTES_PER_LDG);
-        //     printf("\n");
-        // }
 #endif
         // Assemble the final pointer.
         ptr += row_offset + col * BYTES_PER_LDG;
@@ -256,14 +242,6 @@ struct Gmem_tile_o {
                 threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_STG, STGS);
             printf("\n");
         }
-        // if ((threadIdx.x == 2) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-        //     printf("print o parameter\n");
-        //     printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, tidx=%d, row=%d, col=%d, THREADS_PER_ROW=%d\n",
-        //         threadIdx.x, blockIdx.x, blockIdx.y, tidx, row, col, THREADS_PER_ROW);
-        //     printf("threadIdx.x=%d, threadIdx.x=%d, blockIdx.y=%d, row_offset=%d ROWs=%d, COLS=%d, BYTES_PER_ROW=%d, THREADS_PER_ROW=%d, ROWS_PER_STG=%d, LDGS=%d\n", 
-        //         threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_STG, STGS);
-        //     printf("\n");
-        // }
 #endif
         // Is that thread active on the last STG?
         if( HAS_INCOMPLETE_STG ) {
@@ -848,7 +826,7 @@ struct Gmem_tile_mma_ds {
         uint32_t row_offset = bidx * binfo.actual_seqlen_q * binfo.actual_seqlen_k * BYTES_PER_ELEMENT;
         // row_offset = (uint32_t)(row * row_stride_in_bytes);
 #ifdef DEBUG_PRINT
-    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("ds tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
             tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
         printf("ds bidb=%d, bidh=%d, param.h=%d, blockIdx.x=%d\n", binfo.bidb, binfo.bidh, params.h, blockIdx.x);
@@ -887,18 +865,12 @@ struct Gmem_tile_mma_ds {
                                         && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
 
 #ifdef DEBUG_PRINT
-    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
+    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("ds store blockIdx.x=%d, mi=%d, ni=%d, ii=%d, jj=%d, current_row=%d, current_col=%d, float1=%f, float2=%f, begin=%p, ptrs=%p, preds=%d\n",
             blockIdx.x, mi, ni, ii, jj, current_row, current_col, tmp00, tmp01, ptr_, ptrs, preds);
     }
 #endif
                         if (preds) {
-#ifdef DEBUG_PRINT
-    if ((threadIdx.x == 0) && (blockIdx.x <= 4) && (blockIdx.y == 0)) {
-       printf("ds store blockIdx.x=%d in, mi=%d, ni=%d, ii=%d, jj=%d, ptrs=%p, dst=%ud, data=%ud\n", 
-            blockIdx.x, mi, ni, ii, jj, ptrs, dst, fmha::float2_to_half2(tmp00, tmp01));
-    }
-#endif
                             fmha::stg(ptrs, dst);
                         }
                     }

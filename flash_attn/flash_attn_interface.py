@@ -29,12 +29,14 @@ def _flash_attn_forward(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_s
 
 def _flash_attn_backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k, attn_mask, attn_bias,
                          max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, causal):
-    softmax_d = flash_attn_cuda.bwd(
+    softmax_d, *rest = flash_attn_cuda.bwd(
         dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k,
         max_seqlen_q, max_seqlen_k, dropout_p, softmax_scale, False, causal, None, attn_mask, attn_bias)
+    import pdb; pdb.set_trace()
     # if dk.isnan().any() or dk.isnan().any() or dv.isnan().any() or softmax_d.isnan().any():
     #     breakpoint()
-    return dq, dk, dv, softmax_d
+    dbias = None if attn_bias is None else rest[0]
+    return dq, dk, dv, softmax_d, dbias
 
 
 class FlashAttnQKVPackedFunc(torch.autograd.Function):
@@ -140,14 +142,14 @@ class FlashAttnFunc(torch.autograd.Function):
             cur_rng_state = torch.cuda.get_rng_state()
             torch.cuda.set_rng_state(rng_state)
         dq, dk, dv = torch.empty_like(q), torch.empty_like(k), torch.empty_like(v)
-        import pdb; pdb.set_trace()
-        _flash_attn_backward(
+        # import pdb; pdb.set_trace()
+        dq, dk, dv, softmax_d, dbias = _flash_attn_backward(
             dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k, attn_mask, attn_bias,
             ctx.max_seqlen_q, ctx.max_seqlen_k, ctx.dropout_p, ctx.softmax_scale, ctx.causal
         )
         if rng_state is not None:
             torch.cuda.set_rng_state(cur_rng_state)
-        return dq, dk, dv, None, None, None, None, None, None, None, None, None, None 
+        return dq, dk, dv, None, None, None, None, None, dbias, None, None, None, None
         # TODO: the last two is attn_mask, attn_bias, bias need gradient
 
 
