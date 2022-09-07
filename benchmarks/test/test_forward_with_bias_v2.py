@@ -41,7 +41,7 @@ def _attention(query, key, value, mask=None, biases=None, upcast=False) -> torch
         value = value.float()
         if mask is not None:
             mask = mask.float()
-        if bias is not None:
+        if biases is not None:
             biases = biases.float()
 
     # [*, H, C_hidden, K]

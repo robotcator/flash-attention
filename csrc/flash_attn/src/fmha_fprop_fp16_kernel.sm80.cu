@@ -63,20 +63,9 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     bool has_bias = !(launch_params.params.attn_bias_ptr == nullptr);
 
 #ifdef DEBUG_PRINT
-    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d\n", has_attn, has_bias, launch_params.params.bias_mod_size);
+    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d, mask_seq_mod_size=%d, mask_head_mod_size=%d\n", 
+        has_attn, has_bias, launch_params.params.bias_mod_size, launch_params.params.mask_seq_mod_size, launch_params.params.mask_head_mod_size);
 #endif
-
-    // attn + bias on 
-    // IsDropoutConst off
-    // auto kernel = &fmha_fprop_fp16_sm80_loop_kernel<Kernel_traits, false, false, false, true, true>;
-    // dim3 grid(launch_params.params.b, launch_params.params.h);
-
-    // printf("grid size: %d %d\n", launch_params.params.b, launch_params.params.h);
-    // printf("block size: %d\n", Kernel_traits::THREADS);
-    // kernel<<<grid, Kernel_traits::THREADS, smem_size, launch_params.stream>>>(
-    //     launch_params.params);
-    // FMHA_CHECK_CUDA(cudaPeekAtLastError());
-  
 
     if (has_attn) 
     {
@@ -204,51 +193,51 @@ void run_fmha_fp16_sm80(Launch_params<FMHA_fprop_params> &launch_params,
                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
             }
         } 
-        else if (launch_params.params.d == 32) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else if( launch_params.params.seqlen_k == 256 ) {
-                using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else {
-                using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            }
-        } else if (launch_params.params.d == 64) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else if( launch_params.params.seqlen_k >= 256 ) {
-                if (dprops->major == 8 && dprops->minor >= 0) {
-                    using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                } else if (dprops->major == 7 && dprops->minor == 5) {
-                    if (launch_params.is_dropout) { // Need to use the same block size as backward
-                        using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
-                        run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                    } else {
-                        using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
-                        run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                    }
-                }
-            }
-        } else if (launch_params.params.d == 128) {
-            if( launch_params.params.seqlen_k == 128 ) {
-                using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
-                run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-            } else {
-                if (dprops->major == 8 && dprops->minor >= 0 && !launch_params.is_dropout) {
-                    // TD [2022-06-05] Keep K in registers to reduce register spilling
-                    // Gives about 6% speedup compared to using block size 128.
-                    using Kernel_traits = FMHA_kernel_traits<256, 128, 16, 1, 4, 0x18u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                } else {  // Need to use the same block size as backward
-                    using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
-                    run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
-                }
-            }
-        }
+        // else if (launch_params.params.d == 32) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else if( launch_params.params.seqlen_k == 256 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else {
+        //         using Kernel_traits = FMHA_kernel_traits<256, 32, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     }
+        // } else if (launch_params.params.d == 64) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else if( launch_params.params.seqlen_k >= 256 ) {
+        //         if (dprops->major == 8 && dprops->minor >= 0) {
+        //             using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         } else if (dprops->major == 7 && dprops->minor == 5) {
+        //             if (launch_params.is_dropout) { // Need to use the same block size as backward
+        //                 using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
+        //                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //             } else {
+        //                 using Kernel_traits = FMHA_kernel_traits<256, 64, 16, 1, 4, 0x08u, elem_type>;
+        //                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //             }
+        //         }
+        //     }
+        // } else if (launch_params.params.d == 128) {
+        //     if( launch_params.params.seqlen_k == 128 ) {
+        //         using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
+        //         run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //     } else {
+        //         if (dprops->major == 8 && dprops->minor >= 0 && !launch_params.is_dropout) {
+        //             // TD [2022-06-05] Keep K in registers to reduce register spilling
+        //             // Gives about 6% speedup compared to using block size 128.
+        //             using Kernel_traits = FMHA_kernel_traits<256, 128, 16, 1, 4, 0x18u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         } else {  // Need to use the same block size as backward
+        //             using Kernel_traits = FMHA_kernel_traits<128, 128, 16, 1, 4, 0x08u, elem_type>;
+        //             run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
+        //         }
+        //     }
+        // }
         // if (launch_params.params.d == 64) {
         //     // using Kernel_traits = FMHA_kernel_traits<128, 64, 16, 1, 4, 0x08u, elem_type>;
         //     // using Kernel_traits = FMHA_kernel_traits<64, 64, 16, 1, 4, 0x08u, elem_type>;
