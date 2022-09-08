@@ -594,7 +594,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 #endif
             // Apply the attn mask.
-            softmax.apply_attn_mask(frag_mask);
+            softmax.apply_attn_mask(frag_mask, l, loop_step_idx);
 
 #ifdef DEBUG_PRINT
         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {

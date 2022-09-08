@@ -222,6 +222,25 @@ void set_params_dgrad(FMHA_dgrad_params &params,
     params.attn_ds_ptr = attn_ds;
 }
 
+void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const std::string &label) {
+    std::string file_name = label + "_" + tensor_name + ".data";
+    std::ofstream file(file_name.c_str());
+    // file << tensor_name << std::endl;
+    // file << tensor << std::endl;
+    std::cout << "tensor_name stride 0: " << tensor_name << " " <<  tensor.stride(0) << std::endl;
+    std::cout << "tensor_name stride 1: " << tensor_name << " " <<  tensor.stride(1) << std::endl;
+    
+    std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
+    auto flatten_tensor = tensor.flatten();
+    auto size = flatten_tensor.numel();
+
+    for (int i = 0; i < size; i ++) {
+        file << flatten_tensor[i].item() << " ";
+        // file << flatten_tensor[i] << " ";
+    }
+    file << std::endl;
+}
+
 std::vector<at::Tensor>
 mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
         const at::Tensor &k,         // total_k x num_heads x head_size, total_k := \sum_{i=0}^{b} s_i
@@ -311,6 +330,18 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
         TORCH_CHECK(mask_sizes[2] == 1 || mask_sizes[2] == max_seqlen_q_);
     }
 
+#ifdef DEBUG_PRINT
+    dump_tensor("input_q", q, "");
+    // dump_tensor("input_k", k, "");
+    // dump_tensor("input_v", v, "");
+    if (attn_mask.has_value()) {
+        dump_tensor("input_mask", *attn_mask, "");
+    }
+    if (attn_bias.has_value()) {
+        dump_tensor("input_bias", *attn_bias, "");
+    }
+#endif
+
     int blocksize_c = ((head_size == 128 && (is_dropout || !is_sm80)) || (is_sm75 && head_size == 64 && is_dropout)) ? 128 : 256;
     // Need to round max_seqlen_k to multiples of blocksize_c
     int max_seqlen_k = ((max_seqlen_k_ + blocksize_c - 1) / blocksize_c) * blocksize_c;
@@ -381,6 +412,10 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     }
 
     run_fmha_fp16_sm80(launch_params, /*configure=*/false);
+
+#ifdef DEBUG_PRINT
+    dump_tensor("output_o", o, "");
+#endif
 
     std::vector<at::Tensor> result = {o, softmax_lse};
     if (return_softmax) {result.push_back(s);}

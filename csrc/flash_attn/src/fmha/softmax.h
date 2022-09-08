@@ -492,7 +492,7 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
     }
 
     template<bool zero=false, typename Fragment>
-    inline __device__ void apply_attn_mask(const Fragment (&mask)[MMAS_M][MMAS_N]) {
+    inline __device__ void apply_attn_mask(const Fragment (&mask)[MMAS_M][MMAS_N], int l = 0, int loop_step_idx = 0) {
         #pragma unroll
         for( int mi = 0; mi < MMAS_M; ++mi ) {
             #pragma unroll
@@ -501,7 +501,14 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
                 for( int ni = 0; ni < MMAS_N; ++ni ) {
                     #pragma unroll
                     for( int jj = 0; jj < 4; ++jj ) {
-                        if( abs(toFloat(mask[mi][ni].elt(ii * 4 + jj))) > 0 ) {
+                        float value = toFloat(mask[mi][ni].elt(ii * 4 + jj));
+#ifdef DEBUG_PRINT
+                        if ((blockIdx.x == 0) && (blockIdx.y == 0)) {
+                            printf("Attnmask: threadIdx.x = %d, threadIdx.y = %d, mi = %d, ni = %d, ii = %d, jj = %d, value = %f, l = %d, loop_step_idx=%d, blockIdx.x = %d\n", 
+                                threadIdx.x, threadIdx.y, mi, ni, ii, jj, float(value), l, loop_step_idx, blockIdx.x);
+                        }
+#endif
+                        if( abs(value) > 0 ) {
                             this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
                         }
                         // this->elt_[2 * mi + ii][4 * ni + jj] += float(mask[mi][ni].elt(ii * 4 + jj));

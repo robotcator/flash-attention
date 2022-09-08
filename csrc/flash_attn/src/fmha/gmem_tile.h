@@ -99,14 +99,14 @@ struct Gmem_tile_qkv {
         // row_offset += (int64_t)((binfo.sum_s * NUM_MATS + qkv_offset) * binfo.h + binfo.bidh) * BYTES_PER_ROW;
         row_offset += (uint32_t)(binfo.bidh * head_stride_in_elts * BYTES_PER_ELEMENT);
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-            printf("use_seqlen_q=%d\n", use_seqlen_q);
-            printf("threadIdx.x=%d, threadIdx.x=%d, blockIdx.y=%d, row_offset=%d BYTES_PER_LDG=%d\n", 
-            threadIdx.x, threadIdx.x, blockIdx.y, row_offset, BYTES_PER_LDG);
-            printf("\n");
-        }
-#endif
+// #ifdef DEBUG_PRINT
+//         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+//             printf("use_seqlen_q=%d\n", use_seqlen_q);
+//             printf("threadIdx.x=%d, threadIdx.x=%d, blockIdx.y=%d, row_offset=%d BYTES_PER_LDG=%d\n", 
+//             threadIdx.x, threadIdx.x, blockIdx.y, row_offset, BYTES_PER_LDG);
+//             printf("\n");
+//         }
+// #endif
         // Assemble the final pointer.
         ptr += row_offset + col * BYTES_PER_LDG;
     }
@@ -233,16 +233,16 @@ struct Gmem_tile_o {
         row_offset += (uint32_t)(binfo.bidh * head_stride_in_elts * BYTES_PER_ELEMENT);
         // Assemble the final pointer.
         ptr_ += row_offset + col * BYTES_PER_STG;
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-            printf("print o parameter\n");
-            printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, tidx=%d, row=%d, col=%d, THREADS_PER_ROW=%d\n",
-                threadIdx.x, blockIdx.x, blockIdx.y, tidx, row, col, THREADS_PER_ROW);
-            printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, row_offset=%d ROWs=%d, COLS=%d, BYTES_PER_ROW=%d, THREADS_PER_ROW=%d, ROWS_PER_STG=%d, LDGS=%d\n", 
-                threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_STG, STGS);
-            printf("\n");
-        }
-#endif
+// #ifdef DEBUG_PRINT
+//         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
+//             printf("print o parameter\n");
+//             printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, tidx=%d, row=%d, col=%d, THREADS_PER_ROW=%d\n",
+//                 threadIdx.x, blockIdx.x, blockIdx.y, tidx, row, col, THREADS_PER_ROW);
+//             printf("threadIdx.x=%d, blockIdx.x=%d, blockIdx.y=%d, row_offset=%d ROWs=%d, COLS=%d, BYTES_PER_ROW=%d, THREADS_PER_ROW=%d, ROWS_PER_STG=%d, LDGS=%d\n", 
+//                 threadIdx.x, blockIdx.x, blockIdx.y, row_offset, ROWS, COLS, BYTES_PER_ROW, THREADS_PER_ROW, ROWS_PER_STG, STGS);
+//             printf("\n");
+//         }
+// #endif
         // Is that thread active on the last STG?
         if( HAS_INCOMPLETE_STG ) {
             is_active_for_last_stg_ = row + (STGS - 1) * ROWS_PER_STG < Cta_tile::M;
@@ -524,8 +524,8 @@ struct Gmem_tile_mma_mask {
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
         printf("tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
             tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
-        printf("bidb=%d, bidh=%d, param.h=%d, mask_head_mod_size=%d, mask_seq_mod_size=%d\n", 
-            binfo.bidb, binfo.bidh, params.h, params.mask_head_mod_size, params.mask_seq_mod_size);
+        printf("bidb=%d, bidh=%d, param.h=%d, mask_head_mod_size=%d, mask_seq_mod_size=%d, loop_step_idx=%d\n", 
+            binfo.bidb, binfo.bidh, params.h, params.mask_head_mod_size, params.mask_seq_mod_size, loop_step_idx);
         printf("\n");
     }
 #endif
@@ -568,8 +568,8 @@ struct Gmem_tile_mma_mask {
                         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
                             printf("mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
                                 mi, ni, ii, jj, offset, current_row, current_col, ptr_, ptrs[offset], preds[offset]);
-                            printf("current_row=%d, current_col=%d, ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d\n",
-                                current_row, current_col, ROWS, actual_seqlen_q, COLS, actual_seqlen_k);
+                            printf("current_row=%d, current_col=%d, ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d, loop_step_idx=%d\n",
+                                current_row, current_col, ROWS, actual_seqlen_q, COLS, actual_seqlen_k, loop_step_idx);
                             printf("cond 1=%d\n", (current_row <= min(ROWS, actual_seqlen_q)));
                             printf("cond 2=%d\n", ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
                             printf("\n");
