@@ -9,6 +9,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--test_np", required=False, help="test np implementation kernel with torch", type=bool, default=False)
 parser.add_argument("--has_bias", required=False, help="add bias in attention", type=bool, default=False)
 parser.add_argument("--has_mask", required=False, help="add mask in attention", type=bool, default=False)
+parser.add_argument("--seqlen", required=False, help="seqlen", type=int, default=128)
+
 args = parser.parse_args()
 print(args)
 
@@ -16,51 +18,73 @@ print(args)
 batch_size = 1
 nheads = 1
 headdim = 16
-seq = 8
+if args.seqlen is not None:
+    seq = args.seqlen
+else:
+    seq = 8
+
+print ("processing seqlen:  {0}".format(seq))
+
+bs_seq = 1
 max_seqlen_q_ = seq 
 max_seqlen_k_ = seq
 
 dtypes = np.float16
 
-q_cpu = np.zeros((batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim), dtype=dtypes)
-k_cpu = np.zeros((batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim), dtype=dtypes)
-v_cpu = np.zeros((batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim), dtype=dtypes)
+q_cpu = np.zeros((batch_size * bs_seq * max_seqlen_k_, nheads, headdim), dtype=dtypes)
+k_cpu = np.zeros((batch_size * bs_seq * max_seqlen_k_, nheads, headdim), dtype=dtypes)
+v_cpu = np.zeros((batch_size * bs_seq * max_seqlen_k_, nheads, headdim), dtype=dtypes)
   
 cnt = 0
-for i in range(batch_size * max_seqlen_k_ * max_seqlen_k_):
+for i in range(batch_size * bs_seq * max_seqlen_k_):
     for j in range(nheads):
         for k in range(headdim):
-            q_cpu[i][j][k] = cnt * 0.001
-            k_cpu[i][j][k] = cnt * 0.001
-            v_cpu[i][j][k] = cnt * 0.001
+            q_cpu[i][j][k] = cnt % 10000 * 0.001
+            k_cpu[i][j][k] = cnt % 10000 * 0.001
+            v_cpu[i][j][k] = cnt % 10000 * 0.001
             cnt += 1
 
-bias_ref = np.zeros([batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
-cnt = 0
-for i in range(batch_size * max_seqlen_k_):
-    for j in range(nheads):
-        for k in range(max_seqlen_q_):
-            for l in range(max_seqlen_k_):
-                bias_ref[i][j][k][l] = cnt * 0.1
-                cnt += 1
-
-mask_ref = np.ones([batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
-mask_ref = (1 - np.tril(mask_ref)) * -1
-
-# bias_ref = np.zeros([batch_size , nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
+# cost too much time when seq is large
+# bias_ref = np.zeros([batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
 # cnt = 0
-# for i in range(batch_size ):
+# for i in range(batch_size * max_seqlen_k_):
 #     for j in range(nheads):
 #         for k in range(max_seqlen_q_):
 #             for l in range(max_seqlen_k_):
 #                 bias_ref[i][j][k][l] = cnt * 0.1
 #                 cnt += 1
 
+# mask_ref = np.ones([batch_size * max_seqlen_k_, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes)
+# mask_ref = (1 - np.tril(mask_ref)) * -1
+
+mask_ref = np.ones([batch_size * bs_seq, nheads, max_seqlen_q_, max_seqlen_k_], dtype=dtypes) * -1
+# cnt = 0
+# for i in range(batch_size * max_seqlen_k_):
+#     for j in range(nheads):
+#         for k in range(max_seqlen_q_):
+#             for l in range(max_seqlen_k_):
+#                 if l % 2 == 0:
+#                     mask_ref[i][j][k][l] = 0
+#                 cnt += 1
+
+for i in range(batch_size * bs_seq):
+    for j in range(1):
+        for k in range(1):
+            for l in range(max_seqlen_k_):
+                if l % 2 == 0:
+                    mask_ref[i][j][k][l] = 0
+
+
+for i in range(batch_size * bs_seq):
+    for j in range(nheads):
+        for k in range(max_seqlen_q_):
+                    mask_ref[i][j][k] = mask_ref[i][0][0]
+
 
 # dout = np.random.rand(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim).astype(dtype=dtypes)
 cnt = 0
-dout = np.ones([batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim], dtype=dtypes)
-for i in range(batch_size * max_seqlen_k_ * max_seqlen_k_):
+dout = np.ones([batch_size * bs_seq * max_seqlen_k_, nheads, headdim], dtype=dtypes)
+for i in range(batch_size * bs_seq * max_seqlen_k_):
     for j in range(nheads):
         for k in range(headdim):
             dout[i][j][k] = cnt * 0.001
@@ -102,7 +126,7 @@ def fwd(q, k, v, max_seqlen_q, bias=None, mask=None):
         mask_broad = np.broadcast_to(mask, s.shape)
         mask_np = np.ma.masked_where(mask_broad < 0, s)
         # np.ma.set_fill_value(mask_np, float('-inf'))
-        np.ma.set_fill_value(mask_np, float('-999'))
+        np.ma.set_fill_value(mask_np, float('-inf'))
         s = mask_np.filled()
 
     p = softmax(s)
@@ -235,23 +259,133 @@ def check_fwd_kernel(has_bias=False, has_mask=False):
         prefix = ""
     
     attn_output = np.genfromtxt("{}_attn_output.data".format(prefix), delimiter=" ", dtype=np.float32)
-    attn_output = attn_output.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
-    attn_output = attn_output.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
+    attn_output = attn_output.reshape(batch_size * bs_seq * max_seqlen_k_, nheads, headdim)
+    attn_output = attn_output.reshape(batch_size * bs_seq, max_seqlen_k_, nheads, headdim)
+    attn_output = attn_output.transpose(0, 2, 1, 3)
+    # batch_size * bs_seq, nheads, max_seqlen_k_, headdim
+    print ("attn output shape: ", attn_output.shape)
+    print ("output max error: ", np.abs(o - attn_output).max())
+
+    attn_lse = np.genfromtxt("{}_attn_lse.data".format(prefix), delimiter=" ", dtype=np.float32)
+    max_seqlen_q_pad = ((max_seqlen_q_ + 16 - 1) // 16) * 16
+    attn_lse = attn_lse.reshape(batch_size * bs_seq , nheads, max_seqlen_q_pad)
+    # print ("attn lse: ", attn_lse)
+    attn_lse = attn_lse[:,:,:max_seqlen_q_]
+    
+    lse_ref = compute_lse(s)
+    lse_ref = lse_ref.reshape(batch_size * bs_seq , nheads, max_seqlen_q_)
+    # print ("ref lse: ", lse_ref)
+
+    print ("lse_ref shape = {}, attn_lse shape = {}".format(lse_ref.shape, attn_lse.shape))
+    print ("lse max error: ", np.abs(lse_ref - attn_lse).max())
+
+    print ("is same matrix: ", is_same_matrix(lse_ref, attn_lse))
+    print ("is same matrix: ", is_same_matrix(o, attn_output))
+
+    # with python interface input
+    python_inputs = np.genfromtxt("../inputs_flash_seq{}.data".format(max_seqlen_q_), delimiter=" ", dtype=np.float32)
+    python_inputs = python_inputs.reshape(batch_size, bs_seq, nheads, max_seqlen_q_, headdim)
+    python_inputs = python_inputs.transpose(0, 1, 3, 2, 4)
+    python_inputs = python_inputs.reshape(batch_size * bs_seq * max_seqlen_q_, nheads, headdim)
+    print ("is same matrix input: ", is_same_matrix(python_inputs, q_cpu))
+
+    python_attn_mask = np.genfromtxt("../attn_mask_flash_seq{}.data".format(max_seqlen_q_), delimiter=" ", dtype=np.float32)
+    python_attn_mask = python_attn_mask.reshape(batch_size, bs_seq, nheads, max_seqlen_q_, max_seqlen_k_)
+    python_attn_mask = python_attn_mask.reshape(batch_size * bs_seq, nheads, max_seqlen_q_, max_seqlen_k_)    
+    print ("is same matrix mask: ", is_same_matrix(python_inputs, q_cpu))
+
+    # flash tmp output 
+    # out = out.reshape(*batch_dims, n, no_heads, c) 
+
+    # python_output_tmp0 = np.genfromtxt("../tmp2.data", delimiter=" ", dtype=np.float32)
+    # python_output_tmp0 = python_output_tmp0.reshape(batch_size, bs_seq, max_seqlen_q_, nheads, headdim)
+    # python_output_tmp0 = python_output_tmp0.transpose(0, 1, 3, 2, 4)
+    # python_output_tmp0 = python_output_tmp0.reshape(batch_size * bs_seq, nheads, max_seqlen_q_, headdim)
+
+    # print (python_output_tmp0.shape)
+    # print ("is same matrix flash output tmp1: ", is_same_matrix(o, python_output_tmp0, verbose=True))
+    # print ("is same matrix flash output tmp1: ", is_same_matrix(attn_output, python_output_tmp0))
+
+    python_output_tmp1 = np.genfromtxt("../flash_temp1.output".format(max_seqlen_q_), delimiter=" ", dtype=np.float32)
+    python_output_tmp1 = python_output_tmp1.reshape(batch_size, bs_seq, max_seqlen_q_, nheads, headdim)
+    python_output_tmp1 = python_output_tmp1.transpose(0, 1, 3, 2, 4)
+    python_output_tmp1 = python_output_tmp1.reshape(batch_size * bs_seq, nheads, max_seqlen_q_, headdim)
+
+    print (python_output_tmp1.shape)
+    print ("is same matrix flash output tmp1: ", is_same_matrix(o, python_output_tmp1, verbose=True))
+    print ("is same matrix flash output tmp1: ", is_same_matrix(attn_output, python_output_tmp1, verbose=True))
+
+    # flash output 
+    # [batch_size, bs_seq, seq_k, head, c_dim]
+    # 1, 1, 512, 1, 16
+    python_output = np.genfromtxt("../output_flash_seq{}.data".format(max_seqlen_q_), delimiter=" ", dtype=np.float32)
+    python_output = python_output.reshape(batch_size, bs_seq, max_seqlen_q_, nheads, headdim)
+    python_output = python_output.transpose(0, 1, 3, 2, 4)
+    python_output = python_output.reshape(batch_size * bs_seq, nheads, max_seqlen_q_, headdim)
+
+    print (python_output.shape)
+    print ("is same matrix flash output: ", is_same_matrix(o, python_output))
+    print ("is same matrix flash output: ", is_same_matrix(attn_output, python_output))
+
+    # torch output 
+    python_torch_output = np.genfromtxt("../output_torch_seq{}.data".format(max_seqlen_q_), delimiter=" ", dtype=np.float32)
+    python_torch_output = python_torch_output.reshape(batch_size, bs_seq, nheads, max_seqlen_q_, headdim)
+    python_torch_output = python_torch_output.reshape(batch_size * bs_seq, nheads, max_seqlen_q_, headdim)
+    
+    print (python_torch_output.shape)
+    print ("is same matrix torch output: ", is_same_matrix(o, python_torch_output))
+    print ("is same matrix torch output: ", is_same_matrix(attn_output, python_torch_output))
+
+
+
+def check_fwd_kernel_pt(has_bias=False, has_mask=False):
+    print ("==== check fwd kernel with np ====")
+    if has_bias:
+        q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=bias_ref, mask=None)
+        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias=bias_pt, mask=mask_pt)
+    elif has_mask:
+        q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None, mask=mask_ref)
+        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias=bias_pt, mask=mask_pt)
+    else:
+        q_pt, k_pt, v_pt, dout_pt, bias_pt, mask_pt = prepare_pt_data(dout, q_cpu, k_cpu, v_cpu, max_seqlen_q=max_seqlen_q_, bias=None, mask=None)
+        s_pt, p_pt, o_pt = fwd_pt(q_pt, k_pt, v_pt, bias=bias_pt, mask=mask_pt)
+
+    o = o_pt.detach().cpu().numpy()
+    s = s_pt.detach().cpu().numpy()
+
+    # print ("q * k = p'shape = {} p = {}".format(p.shape, p))
+
+    # attn_output = np.loadtxt("attn_output.data", delimiter=" ")
+    if has_bias:
+        prefix = "has_bias"
+        print ("has bias on, prefix is ", prefix)
+    elif has_mask:
+        prefix = "has_mask"
+    else:
+        prefix = ""
+    
+    attn_output = np.genfromtxt("{}_attn_output.data".format(prefix), delimiter=" ", dtype=np.float32)
+    attn_output = attn_output.reshape(batch_size * bs_seq * max_seqlen_k_, nheads, headdim)
+    attn_output = attn_output.reshape(batch_size * bs_seq, max_seqlen_k_, nheads, headdim)
     attn_output = attn_output.transpose(0, 2, 1, 3)
     print ("output max error: ", np.abs(o - attn_output).max())
 
     attn_lse = np.genfromtxt("{}_attn_lse.data".format(prefix), delimiter=" ", dtype=np.float32)
     max_seqlen_q_pad = ((max_seqlen_q_ + 16 - 1) // 16) * 16
-    attn_lse = attn_lse.reshape(batch_size * max_seqlen_k_ , nheads, max_seqlen_q_pad)
+    attn_lse = attn_lse.reshape(batch_size * bs_seq , nheads, max_seqlen_q_pad)
     # print ("attn lse: ", attn_lse)
     attn_lse = attn_lse[:,:,:max_seqlen_q_]
     
     lse_ref = compute_lse(s)
-    lse_ref = lse_ref.reshape(batch_size * max_seqlen_k_ , nheads, max_seqlen_q_)
+    lse_ref = lse_ref.reshape(batch_size * bs_seq , nheads, max_seqlen_q_)
     # print ("ref lse: ", lse_ref)
 
     print ("lse_ref shape = {}, attn_lse shape = {}".format(lse_ref.shape, attn_lse.shape))
     print ("lse max error: ", np.abs(lse_ref - attn_lse).max())
+
+    print ("is same matrix (lse): ", is_same_matrix(lse_ref, attn_lse))
+    print ("is same matrix (attn_output): ", is_same_matrix(o, attn_output))
+
 
 
 def is_same_matrix(pred, gt, abs_eps=0.01, relative_rps=0.03, verbose=False):
@@ -297,16 +431,16 @@ def check_bwd_kernel(has_bias=False, has_mask=False):
     if has_bias:
         attn_dbias = np.genfromtxt("{}_attn_dbias.data".format(prefix), delimiter=" ", dtype=np.float32)
 
-    attn_dq = attn_dq.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
-    attn_dk = attn_dk.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
-    attn_dv = attn_dv.reshape(batch_size * max_seqlen_k_ * max_seqlen_k_, nheads, headdim)
+    attn_dq = attn_dq.reshape(batch_size * bs_seq * max_seqlen_k_, nheads, headdim)
+    attn_dk = attn_dk.reshape(batch_size * bs_seq * max_seqlen_k_, nheads, headdim)
+    attn_dv = attn_dv.reshape(batch_size * bs_seq * max_seqlen_k_, nheads, headdim)
 
-    attn_dq = attn_dq.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
-    attn_dk = attn_dk.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
-    attn_dv = attn_dv.reshape(batch_size * max_seqlen_k_, max_seqlen_k_, nheads, headdim)
+    attn_dq = attn_dq.reshape(batch_size * bs_seq, max_seqlen_k_, nheads, headdim)
+    attn_dk = attn_dk.reshape(batch_size * bs_seq, max_seqlen_k_, nheads, headdim)
+    attn_dv = attn_dv.reshape(batch_size * bs_seq, max_seqlen_k_, nheads, headdim)
 
     if has_bias:
-        attn_dbias = attn_dbias.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+        attn_dbias = attn_dbias.reshape(batch_size * bs_seq, nheads, max_seqlen_k_, max_seqlen_k_)
     
     attn_dq = attn_dq.transpose(0, 2, 1, 3)
     attn_dk = attn_dk.transpose(0, 2, 1, 3)
@@ -327,7 +461,7 @@ def check_bwd_kernel(has_bias=False, has_mask=False):
         # print ("max error in ds: ", np.abs(attn_ds - ds).max(), )
         
         attn_dbias = np.genfromtxt("{}_attn_dbias.data".format(prefix), delimiter=" ", dtype=np.float32)
-        attn_dbias = attn_dbias.reshape(batch_size * max_seqlen_k_, nheads, max_seqlen_k_, max_seqlen_k_)
+        attn_dbias = attn_dbias.reshape(batch_size * bs_seq, nheads, max_seqlen_k_, max_seqlen_k_)
         print ("max error in dbias: ", np.abs(attn_dbias - dbias).max(), )
 
 
@@ -371,6 +505,7 @@ def prepare_pt_data(dout, q, k, v, max_seqlen_q, bias=None, mask=None):
     batch_size = int(q.shape[0] / max_seqlen_q)
     head_num = q.shape[1]
     head_dim = q.shape[2]
+    import pdb; pdb.set_trace()
 
     dout_pt = torch.from_numpy(dout.copy())
     dout_pt = dout_pt.reshape(batch_size, max_seqlen_q, head_num, head_dim)
@@ -588,18 +723,24 @@ if __name__ == '__main__':
     # check_bwd_np(has_bias=has_bias)
     # print ("====test without bias====")
 
-    print ("====test with bias====")
-    has_bias = True
-    check_fwd_np(has_bias=has_bias)
-    check_bwd_np(has_bias=has_bias)
-    print ("====test with bias====")
+    # print ("====test with bias====")
+    # has_bias = True
+    # check_fwd_np(has_bias=has_bias)
+    # check_bwd_np(has_bias=has_bias)
+    # print ("====test with bias====")
 
-    print ("====test kernel without bias====")
+    # print ("====test kernel using torch====")
+    # has_bias = args.has_bias
+    # has_mask = args.has_mask
+
+    # check_fwd_kernel_pt(has_bias=has_bias, has_mask=has_mask)
+
+    print ("====test kernel using numpy====")
     has_bias = args.has_bias
     has_mask = args.has_mask
 
     check_fwd_kernel(has_bias=has_bias, has_mask=has_mask)
-    check_bwd_kernel(has_bias=has_bias, has_mask=has_mask)
+    # check_bwd_kernel(has_bias=has_bias, has_mask=has_mask)
 
     # print ("====test kernel with bias====")
     # has_bias = True

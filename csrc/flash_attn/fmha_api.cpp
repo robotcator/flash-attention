@@ -239,6 +239,10 @@ void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const
         // file << flatten_tensor[i] << " ";
     }
     file << std::endl;
+
+    std::string sfile_name = label + "_" + tensor_name + ".pt";
+    std::ofstream sfile(sfile_name.c_str());
+    torch::save(tensor, sfile);
 }
 
 std::vector<at::Tensor>
