@@ -229,6 +229,8 @@ void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const
     // file << tensor << std::endl;
     std::cout << "tensor_name stride 0: " << tensor_name << " " <<  tensor.stride(0) << std::endl;
     std::cout << "tensor_name stride 1: " << tensor_name << " " <<  tensor.stride(1) << std::endl;
+    std::cout << "tensor_name stride 2: " << tensor_name << " " <<  tensor.stride(2) << std::endl;
+    std::cout << "tensor_name stride 3: " << tensor_name << " " <<  tensor.stride(-1) << std::endl;
     
     std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
     auto flatten_tensor = tensor.flatten();

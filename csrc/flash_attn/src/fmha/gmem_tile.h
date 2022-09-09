@@ -522,9 +522,9 @@ struct Gmem_tile_mma_mask {
 
 #ifdef DEBUG_PRINT
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-        printf("tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
+        printf("init mask tid_=%d, warp=%d, lane=%d, warp_n=%d, warp_m=%d, quad=%d, tid=%d, row=%d, col=%d\n",
             tidx_, warp, lane, warp_n, warp_m, quad, tid, row, col);
-        printf("bidb=%d, bidh=%d, param.h=%d, mask_head_mod_size=%d, mask_seq_mod_size=%d, loop_step_idx=%d\n", 
+        printf("init mask bidb=%d, bidh=%d, param.h=%d, mask_head_mod_size=%d, mask_seq_mod_size=%d, loop_step_idx=%d\n", 
             binfo.bidb, binfo.bidh, params.h, params.mask_head_mod_size, params.mask_seq_mod_size, loop_step_idx);
         printf("\n");
     }
@@ -562,16 +562,18 @@ struct Gmem_tile_mma_mask {
                         ptrs[offset] = ptr_ + (uint32_t)(current_row % mask_seq_mod_size) * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
+                        // preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
+                        //                 && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
                         preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
-                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
+                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
 #ifdef DEBUG_PRINT
                         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
-                            printf("mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
+                            printf("load mask mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
                                 mi, ni, ii, jj, offset, current_row, current_col, ptr_, ptrs[offset], preds[offset]);
-                            printf("current_row=%d, current_col=%d, ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d, loop_step_idx=%d\n",
-                                current_row, current_col, ROWS, actual_seqlen_q, COLS, actual_seqlen_k, loop_step_idx);
-                            printf("cond 1=%d\n", (current_row <= min(ROWS, actual_seqlen_q)));
-                            printf("cond 2=%d\n", ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
+                            printf("load mask ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d, loop_step_idx=%d, cond1=%d, cond2=%d\n",
+                                ROWS, actual_seqlen_q, COLS, actual_seqlen_k, loop_step_idx,
+                                (current_row <= min(ROWS, actual_seqlen_q)),
+                                ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
                             printf("\n");
                         }
 #endif
@@ -722,15 +724,15 @@ struct Gmem_tile_mma_bias {
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
                         preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
-                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
+                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
 #ifdef DEBUG_PRINT
                         if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0))  {
-                            printf("mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
+                            printf("load bias mi=%d, ni=%d, ii=%d, jj=%d, offset=%d, current_row=%d, current_col=%d, start_ptr=%p, ptrs[offset]=%p, preds[offset]=%d\n",
                                 mi, ni, ii, jj, offset, current_row, current_col, ptr_, ptrs[offset], preds[offset]);
-                            printf("current_row=%d, current_col=%d, ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d\n",
-                                current_row, current_col, ROWS, actual_seqlen_q, COLS, actual_seqlen_k);
-                            printf("cond 1=%d\n", (current_row <= min(ROWS, actual_seqlen_q)));
-                            printf("cond 2=%d\n", ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
+                            printf("load bias ROWS=%d, actual_seqlen_q=%d, COLS=%d, actual_seqlen_k=%d, loop_step_idx=%d, cond1=%d, cond2=%d\n",
+                                ROWS, actual_seqlen_q, COLS, actual_seqlen_k, loop_step_idx,
+                                (current_row <= min(ROWS, actual_seqlen_q)),
+                                ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k)));
                             printf("\n");
                         }
 #endif

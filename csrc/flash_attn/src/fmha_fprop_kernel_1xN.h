@@ -567,6 +567,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
+            fmha::clear(frag_mask);
             gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
             gmem_mask.move();
 

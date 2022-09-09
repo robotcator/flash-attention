@@ -506,7 +506,7 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
                             this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
                         }
 #ifdef DEBUG_PRINT
-                        if ((blockIdx.x == 0) && (blockIdx.y == 0)) {
+                        if ((blockIdx.x == 0) && (blockIdx.y == 0) && l == 0) {
                             printf("Attnmask: threadIdx.x = %d, threadIdx.y = %d, mi = %d, ni = %d, ii = %d, jj = %d, value = %f, softmax = %f, l = %d, loop_step_idx=%d, blockIdx.x = %d\n", 
                                 threadIdx.x, threadIdx.y, mi, ni, ii, jj, float(value), this->elt_[2 * mi + ii][4 * ni + jj], l, loop_step_idx, blockIdx.x);
                         }
