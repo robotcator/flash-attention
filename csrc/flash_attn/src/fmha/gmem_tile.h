@@ -877,7 +877,7 @@ struct Gmem_tile_mma_ds {
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
 
                         preds = (current_row < min(ROWS, actual_seqlen_q))
-                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
+                                        && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
 
 #ifdef DEBUG_PRINT
     if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {

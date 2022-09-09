@@ -233,14 +233,15 @@ void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const
     std::cout << "tensor_name stride 3: " << tensor_name << " " <<  tensor.stride(-1) << std::endl;
     
     std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
-    auto flatten_tensor = tensor.flatten();
-    auto size = flatten_tensor.numel();
+    // cost too much time
+    // auto flatten_tensor = tensor.flatten();
+    // auto size = flatten_tensor.numel();
 
-    for (int i = 0; i < size; i ++) {
-        file << flatten_tensor[i].item() << " ";
-        // file << flatten_tensor[i] << " ";
-    }
-    file << std::endl;
+    // for (int i = 0; i < size; i ++) {
+    //     file << flatten_tensor[i].item() << " ";
+    //     // file << flatten_tensor[i] << " ";
+    // }
+    // file << std::endl;
 
     std::string sfile_name = label + "_" + tensor_name + ".pt";
     std::ofstream sfile(sfile_name.c_str());
