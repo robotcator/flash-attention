@@ -27,6 +27,14 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
     // printf("blocksize_c = %d, WARPS_N = %d, Smem size = %d\n", blocksize_c, Kernel_traits::Cta_tile_p::WARPS_N, smem_size_dq_dk_dv);
 
     bool is_dropout = params.p_dropout < 1.f;  // params.p_dropout is the probability of "keeping"
+
+    bool has_attn = !(params.attn_mask_ptr == nullptr);
+    bool has_bias = !(params.attn_bias_ptr == nullptr);
+
+#ifdef DEBUG_PRINT
+    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d\n", has_attn, has_bias, params.bias_mod_size);
+#endif
+
     // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
     BOOL_SWITCH(is_dropout, IsDropoutConst, [&] {
         auto kernel = params.is_causal

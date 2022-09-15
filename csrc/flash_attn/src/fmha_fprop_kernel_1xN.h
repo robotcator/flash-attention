@@ -374,20 +374,19 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_o.move(begin);
     gmem_o_tmp.move(begin);
     if (Return_softmax) { gmem_s.move(begin); }
+    gmem_softmax_lse.move(begin);
     
-    // if constexpr (has_attn) {
-    if (!(params.attn_mask_ptr == nullptr)) {
+    if constexpr (has_attn) {
+    // if (!(params.attn_mask_ptr == nullptr)) {
         // TODO: mask move 
         gmem_mask.move(begin);
     }
 
-    // if constexpr (has_bias) {
-    if (!(params.attn_bias_ptr == nullptr)) {
+    if constexpr (has_bias) {
+    // if (!(params.attn_bias_ptr == nullptr)) {
         // TODO: bias move 
         gmem_bias.move(begin);
     }
-
-    gmem_softmax_lse.move(begin);
     
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 
@@ -409,15 +408,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         gmem_k.move(loop_step_idx);
         gmem_v.move(loop_step_idx);
         if (Return_softmax) { gmem_s.move(loop_step_idx * steps_og); }
-        // if constexpr (has_attn) {
-        // if (!(params.attn_mask_ptr == nullptr)) {
-        //     // TODO: mask move as s, with col move
-        //     gmem_mask.move(loop_step_idx * steps_og);
-        // }
-        // // if constexpr (has_bias) {
-        // if (!(params.attn_bias_ptr == nullptr)) {
-        //     gmem_bias.move(loop_step_idx * steps_og);
-        // }
     }
 
     // Trigger the loads for K.
@@ -509,44 +499,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 #endif
 
-        // if constexpr (has_attn) {
-        // if (!(params.attn_mask_ptr == nullptr)) {
-        //     using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
-        //     Frag_mask frag_mask[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-
-        //     gmem_mask.load(frag_mask);
-        //     // do we need sync ?
-        //     __syncthreads();
-            
-        //     #pragma unroll
-        //     for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
-        //         #pragma unroll
-        //         for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-        //             acc_p[mi][ni].addf(frag_mask[ni][mi]);
-        //         }
-        //     }
-        //     gmem_mask.move();
-        // }
-
-        // if constexpr (has_bias) {
-        // if (!(params.attn_bias_ptr == nullptr)) {
-        //     using Frag_bias = fmha::Fragment_c<fmha::Row, elem_type>;
-           
-        //     Frag_bias frag_bias[Mma_tile_o::MMAS_K][Mma_tile_o::MMAS_M];
-        //     gmem_bias.load(frag_bias);
-
-        //     __syncthreads();
-            
-        //     #pragma unroll
-        //     for( int mi = 0; mi < Mma_tile_p::MMAS_M; mi++ ) {
-        //         #pragma unroll
-        //         for( int ni = 0; ni < Mma_tile_p::MMAS_N; ni++ ) {
-        //             acc_p[mi][ni].addf(frag_bias[ni][mi]);
-        //         }
-        //     }
-        //     gmem_bias.move();
-        // }
-
         uint4 out[Gmem_tile_o::STGS_PER_LOOP];
         if (!Is_first) { gmem_o_tmp.load(out, 0); }
 
@@ -563,8 +515,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
 
-         // if constexpr (has_attn) {
-        if (!(params.attn_mask_ptr == nullptr)) {
+        if constexpr (has_attn) {
+        // if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             fmha::clear(frag_mask);
@@ -622,7 +574,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 #endif
         }
 
-        if (!(params.attn_bias_ptr == nullptr)) {
+        if constexpr (has_bias) {
+        // if (!(params.attn_bias_ptr == nullptr)) {
             using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             fmha::clear(frag_bias);
