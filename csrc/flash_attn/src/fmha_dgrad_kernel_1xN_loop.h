@@ -31,7 +31,7 @@ inline __device__ void dot_do_o(const uint4 (&do_)[M], const uint4 (&o)[M], cons
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_first, bool Is_last, typename Params, typename Prng>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool has_attn, bool has_bias, bool Is_first, bool Is_last, typename Params, typename Prng>
 inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng &ph,
                                                      const int loop_step_idx) {
 
@@ -213,14 +213,14 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     gmem_softmax_lse.move(begin);
     gmem_softmax_d.move(begin);
 
-    // if constexpr (has_attn) {
-    if (!(params.attn_mask_ptr == nullptr)) {
+    if constexpr (has_attn) {
+    // if (!(params.attn_mask_ptr == nullptr)) {
         // TODO: mask move 
         gmem_mask.move(begin);
     }
 
-    // if constexpr (has_attn) {
-    if (!(params.attn_bias_ptr == nullptr)) {
+    if constexpr (has_attn) {
+    // if (!(params.attn_bias_ptr == nullptr)) {
         // TODO: mask move 
         gmem_bias.move(begin);
         gmem_ds.move(begin);
@@ -356,8 +356,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
-        // if constexpr (has_attn) {
-        if (!(params.attn_mask_ptr == nullptr)) {
+        if constexpr (has_attn) {
+        // if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
@@ -414,7 +414,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 #endif
         }
 
-        if (!(params.attn_bias_ptr == nullptr)) {
+        if constexpr (has_bias) {
+        // if (!(params.attn_bias_ptr == nullptr)) {
             using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
@@ -853,7 +854,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
 // loop_steps = -1 means the number of steps will be params.seqlen_k / Kernel_traits::Cta_tile_p::N.
 // This template parameter is there so we can specialize with loop_steps == 1 and loop_steps == 2.
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal, int loop_steps=-1, typename Params>
+template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Need_attn_mask, bool Need_attn_bias, int loop_steps=-1, typename Params>
 inline __device__ void compute_dq_dk_dv_1xN(const Params &params) {
     constexpr int blocksize_c = Kernel_traits::Cta_tile_p::N;
 
@@ -869,20 +870,20 @@ inline __device__ void compute_dq_dk_dv_1xN(const Params &params) {
     Philox ph(std::get<0>(seeds), tidx_global, std::get<1>(seeds));
 
     if (loop_steps == 1) {
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, true>(params, ph, 0);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, true>(params, ph, 0);
     } else if (loop_steps == 2) {
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, false>(params, ph, 0);
-        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, true>(params, ph, 1);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, false>(params, ph, 0);
+        compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, true>(params, ph, 1);
     } else {
         if (params.seqlen_k == blocksize_c) {
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, true>(params, ph, 0);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, true>(params, ph, 0);
         } else {
             const int max_loop_steps = (params.seqlen_k + blocksize_c - 1) / blocksize_c;
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, true, false>(params, ph, 0);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, true, false>(params, ph, 0);
             for (int loop_step_idx = 1; loop_step_idx < max_loop_steps - 1; loop_step_idx++) {
-                compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, false>(params, ph, loop_step_idx);
+                compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, false>(params, ph, loop_step_idx);
             }
-            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, false, true>(params, ph, max_loop_steps - 1);
+            compute_dq_dk_dv_1xN_one_iter<Kernel_traits, Is_dropout, Is_causal, Need_attn_mask, Need_attn_bias, false, true>(params, ph, max_loop_steps - 1);
         }
     }
 }
