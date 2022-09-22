@@ -124,7 +124,7 @@ def fun(seqlen=128, verbose=False, has_bias=True, has_mask=True):
 
 
 for seqlen in [2**8, 2**9, 600, 700, 800, 2**10, 1200, 1400, 2**11, 2500, 3000, 3500, 2**12]:
-    if has_mask_bias:
+    if args.has_mask_bias:
         fun(seqlen=seqlen)
     else:
         fun(seqlen=seqlen, has_bias=None, has_mask=None)

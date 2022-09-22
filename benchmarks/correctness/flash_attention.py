@@ -6,6 +6,8 @@ from flash_attn.flash_attn_interface import flash_attn_unpadded_func
 def _flash_attn(q, k, v, mask=None, bias=None):
     batch_dims = q.shape[:-3]
     no_heads, n, c = q.shape[-3:]
+    k_no_heads, k_n, k_c = k.shape[-3:]
+
     dtype = q.dtype
 
     # [*, B, N, H, C]
@@ -31,9 +33,9 @@ def _flash_attn(q, k, v, mask=None, bias=None):
         0, (batch_size + 1) * n, step=n, dtype=torch.int32, device=q.device
     )
 
-    k_max_s = n
+    k_max_s = k_n
     k_cu_seqlens = torch.arange(
-        0, (batch_size + 1) * n, step=n, dtype=torch.int32, device=k.device
+        0, (batch_size + 1) * k_n, step=k_n, dtype=torch.int32, device=k.device
     )
 
     if mask is not None:
