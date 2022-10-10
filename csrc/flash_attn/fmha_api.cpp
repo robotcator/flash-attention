@@ -222,6 +222,7 @@ void set_params_dgrad(FMHA_dgrad_params &params,
     params.attn_ds_ptr = attn_ds;
 }
 
+#ifdef DDEBUG_PRINT
 void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const std::string &label) {
     std::string file_name = label + "_" + tensor_name + ".data";
     std::ofstream file(file_name.c_str());
@@ -247,6 +248,7 @@ void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const
     std::ofstream sfile(sfile_name.c_str());
     torch::save(tensor, sfile);
 }
+#endif
 
 std::vector<at::Tensor>
 mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
@@ -291,7 +293,7 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     TORCH_CHECK(q.stride(-1) == 1);
     TORCH_CHECK(k.stride(-1) == 1);
     TORCH_CHECK(v.stride(-1) == 1);
-    TORCH_CHECK(cu_seqlens_k.is_contiguous());
+    TORCH_CHECK(cu_seqlens_q.is_contiguous());
     TORCH_CHECK(cu_seqlens_k.is_contiguous());
 
     const auto sizes = q.sizes();
