@@ -410,9 +410,6 @@ struct Gmem_tile_mma_s : public Base {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// attn mask struct like s, maybe later can reuse the above declaration
-// template< typename Cta_tile, typename Base = Gmem_tile_mma_sd<Cta_tile, sizeof(uint16_t)> >
-// struct Gmem_tile_mma_mask : public Base {
 
 template< typename Cta_tile, int BYTES_PER_ELEMENT = 2>
 struct Gmem_tile_mma_mask {
@@ -516,18 +513,10 @@ struct Gmem_tile_mma_mask {
                         int offset = ii * 2 + jj;
                         const int current_row = mi * ROWS + ii * 8;
                         const int current_col = loop_step_idx * Cta_tile::N + ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
-                        // const int current_col = ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
-                        // 8 is actually col of half data now, for more general case ?
-                        //  the row is already in the right position
-                        // ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
-                        //                (uint32_t)current_col * BYTES_PER_ELEMENT;
-
                         // to support the mask last two dimension
                         ptrs[offset] = ptr_ + (uint32_t)(current_row % mask_seq_mod_size) * row_stride_in_bytes +
                                        (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                        // preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
-                        //                 && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= min(COLS, actual_seqlen_k));
                         preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
                                         && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
                     }
@@ -562,7 +551,6 @@ struct Gmem_tile_mma_mask {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// attn bias struct like s, maybe later can reuse the above declaration
 template< typename Cta_tile, int BYTES_PER_ELEMENT = 2>
 struct Gmem_tile_mma_bias {
 
@@ -701,7 +689,6 @@ struct Gmem_tile_mma_bias {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// attn bias struct like s, maybe later can reuse the above declaration
 template< typename Cta_tile, int BYTES_PER_ELEMENT = 2>
 struct Gmem_tile_mma_ds {
 
