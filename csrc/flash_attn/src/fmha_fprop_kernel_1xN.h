@@ -174,7 +174,6 @@ struct Gemm_Q_K<Kernel_traits, false, elem_type_> : public Gemm_Q_K_base<Kernel_
     __device__ inline void operator()(Acc (&acc_p)[M][N]){
         // Do this part of P^T = (Q * K^T)^T.
         #pragma unroll
-        // how to handle k
         for( int ki = 1; ki < Mma_tile_p::MMAS_K; ++ki ) {
             // Trigger the load from shared memory for the next series of Q values.
             Base::smem_q.load(Base::frag_q[ki & 1], ki);
@@ -247,86 +246,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     using Softmax = fmha::Softmax<Cta_tile_p, Kernel_traits>;
 
-#ifdef DEBUG_PRINT
-    if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
-        // Cta_tile_p
-        printf("Cta_tile_p::M = %d, Cta_tile_p::N = %d, Cta_tile_p::K = %d\n",
-                Cta_tile_p::M, Cta_tile_p::N, Cta_tile_p::K);
-        printf("Cta_tile_p::WARPS_M = %d, Cta_tile_p::WARPS_N = %d, Cta_tile_p::WARPS_K = %d\n",
-                Cta_tile_p::WARPS_M, Cta_tile_p::WARPS_N, Cta_tile_p::WARPS_K);
-        printf("Cta_tile_p::WARPS_PER_CTA = %d, Cta_tile_p::THREADS_PER_WARP = %d, Cta_tile_p::THREADS_PER_CTA = %d\n",
-                Cta_tile_p::WARPS_PER_CTA, Cta_tile_p::THREADS_PER_WARP, Cta_tile_p::THREADS_PER_CTA);
-        printf("\n");
-
-        // Cta_tile_o
-        printf("Cta_tile_o::M = %d, Cta_tile_o::N = %d, Cta_tile_o::K = %d\n",
-                Cta_tile_o::M, Cta_tile_o::N, Cta_tile_o::K);
-        printf("Cta_tile_o::WARPS_M = %d, Cta_tile_o::WARPS_N = %d, Cta_tile_o::WARPS_K = %d\n",
-                Cta_tile_o::WARPS_M, Cta_tile_o::WARPS_N, Cta_tile_o::WARPS_K);
-        printf("Cta_tile_o::WARPS_PER_CTA = %d, Cta_tile_o::THREADS_PER_WARP = %d, Cta_tile_o::THREADS_PER_CTA = %d\n",
-                Cta_tile_o::WARPS_PER_CTA, Cta_tile_o::THREADS_PER_WARP, Cta_tile_o::THREADS_PER_CTA);
-        printf("\n");
-
-        // Mma_tile_p
-        printf("Mma_tile_p::MMAS_M = %d, Mma_tile_p::MMAS_N = %d, Mma_tile_p::MMAS_K = %d\n",
-                Mma_tile_p::MMAS_M, Mma_tile_p::MMAS_N, Mma_tile_p::MMAS_K);
-        // The number of elements computed with a single CTA-MMA.
-        printf("Mma_tile_p::M_PER_MMA_PER_CTA = %d, Mma_tile_p::N_PER_MMA_PER_CTA = %d, Mma_tile_p::K_PER_MMA_PER_CTA = %d\n",
-                Mma_tile_p::M_PER_MMA_PER_CTA, Mma_tile_p::N_PER_MMA_PER_CTA, Mma_tile_p::K_PER_MMA_PER_CTA);
-        printf("\n");
-
-        // Mma_tile_o
-        printf("Mma_tile_o::MMAS_M = %d, Mma_tile_o::MMAS_N = %d, Mma_tile_o::MMAS_K = %d\n",
-                Mma_tile_o::MMAS_M, Mma_tile_o::MMAS_N, Mma_tile_o::MMAS_K);
-        printf("Mma_tile_o::M_PER_MMA_PER_CTA = %d, Mma_tile_o::N_PER_MMA_PER_CTA = %d, Mma_tile_o::K_PER_MMA_PER_CTA = %d\n",
-                Mma_tile_o::M_PER_MMA_PER_CTA, Mma_tile_o::N_PER_MMA_PER_CTA,  Mma_tile_o::K_PER_MMA_PER_CTA);
-        printf("\n");
-
-        // Gmem_tile_q
-        printf("Gmem_tile_q::BYTES_PER_ELEMENT = %d, Gmem_tile_q::ROWS = %d, Gmem_tile_q::COLS = %d,  Gmem_tile_q::LDGS = %d, Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
-            Gmem_tile_q::BYTES_PER_ELEMENT, Gmem_tile_q::ROWS, Gmem_tile_q::COLS,  Gmem_tile_q::LDGS,
-            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
-        printf("\n");
-
-        // Gmem_tile_k
-        printf("Gmem_tile_k::BYTES_PER_ELEMENT = %d, Gmem_tile_k::ROWS = %d, Gmem_tile_k::COLS = %d,  Gmem_tile_k::LDGS = %d， Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
-            Gmem_tile_k::BYTES_PER_ELEMENT, Gmem_tile_k::ROWS, Gmem_tile_k::COLS,  Gmem_tile_k::LDGS,
-            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
-        printf("\n");
-
-        // Gmem_tile_v
-        printf("Gmem_tile_v::BYTES_PER_ELEMENT = %d, Gmem_tile_v::ROWS = %d, Gmem_tile_v::COLS = %d,  Gmem_tile_v::LDGS = %d, Gmem_tile_q::THREADS_PER_ROW = %d, Gmem_tile_q::ROWS_PER_LDG=%d\n",
-            Gmem_tile_v::BYTES_PER_ELEMENT, Gmem_tile_v::ROWS, Gmem_tile_v::COLS,  Gmem_tile_v::LDGS,
-            Gmem_tile_q::THREADS_PER_ROW, Gmem_tile_q::ROWS_PER_LDG);
-        printf("\n");
-
-        // Gmem_tile_o
-        printf("Gmem_tile_o::ROWS = %d, Gmem_tile_o::COLS = %d, Gmem_tile_o::STGS = %d,  Gmem_tile_o::STGS_PER_LOOP = %d\n", 
-            Gmem_tile_o::ROWS, Gmem_tile_o::COLS, Gmem_tile_o::STGS, Gmem_tile_o::STGS_PER_LOOP);
-        printf("\n");
-
-        // Gmem_tile_s
-        printf("Gmem_tile_s::M = %d, Gmem_tile_s::N = %d\n",
-            Gmem_tile_s::M, Gmem_tile_s::N);
-        printf("\n");
-
-        // Gmem_softmax_sum
-        printf("Gmem_softmax_sum::MMAS_M = %d, Gmem_softmax_sum::ROWS = %d\n",
-            Gmem_softmax_sum::MMAS_M, Gmem_softmax_sum::ROWS);
-        printf("\n");
-
-        // Gemm1
-        printf("Gemm1::SHARE_SMEM_FOR_K_AND_V = %d, Gemm1::SMEM_OFFSET_O = %d, Gemm1::SMEM_OFFSET_SOFTMAX = %d, Gemm1::SMEM_OFFSET_V = %d, Gemm1::SMEM_OFFSET_V = %d\n",
-            Gemm1::SHARE_SMEM_FOR_K_AND_V, Gemm1::SMEM_OFFSET_O, Gemm1::SMEM_OFFSET_SOFTMAX, Gemm1::SMEM_OFFSET_V, Gemm1::SMEM_OFFSET_V);
-        printf("\n");
-
-        // Softmax
-        printf("Softmax::WARPS_M = %d, Softmax::WARPS_N = %d, Softmax::MMAS_M = %d, Softmax::MMAS_N = %d\n",
-            Softmax::WARPS_M, Softmax::WARPS_N, Softmax::MMAS_M, Softmax::MMAS_N);
-        printf("\n");
-    }
-#endif
-
     // Shared memory.
     extern __shared__ char smem_[];
 
@@ -353,14 +272,12 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
     Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
-    // TODO: load fun as s
 
     // bool has_bias = !(params.attn_bias_ptr == nullptr);
     // Allocate the global memory tile loader for bias.
     using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
     // conctructor
     Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
-    // TODO: load fun as s
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
@@ -378,13 +295,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     
     if constexpr (has_attn) {
     // if (!(params.attn_mask_ptr == nullptr)) {
-        // TODO: mask move 
         gmem_mask.move(begin);
     }
 
     if constexpr (has_bias) {
     // if (!(params.attn_bias_ptr == nullptr)) {
-        // TODO: bias move 
         gmem_bias.move(begin);
     }
     
@@ -481,23 +396,11 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Do this part of P = Q * K^T.
         gemm_q_k(acc_p);
-        // TODO acc_p += mask, index like gmem_s.store(frag_p, mask);
 
         // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
         //     printf("acc_p=%.6f, %.6f\n", acc_p[0][0].elt(0), acc_p[0][0].elt(1));
         // }
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && (l == 0))  {
-            for (int ii = 0; ii < Mma_tile_p::MMAS_M; ii ++) {
-                for (int jj = 0; jj < Mma_tile_p::MMAS_N; jj ++) {
-                    for (int kk = 0; kk < acc_p[ii][jj].NUM_ELTS; kk ++) {
-                        printf("ii=%d, jj=%d, kk=%d, acc_p=%.6f\n", ii, jj, kk, acc_p[ii][jj].elt(kk));
-                    }
-                }
-            }
-        }
-#endif
 
         uint4 out[Gmem_tile_o::STGS_PER_LOOP];
         if (!Is_first) { gmem_o_tmp.load(out, 0); }
@@ -523,55 +426,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
             gmem_mask.move();
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
             // Apply the attn mask.
             softmax.apply_attn_mask(frag_mask, l, loop_step_idx);
-
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
         }
 
         if constexpr (has_bias) {
@@ -582,55 +438,8 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
             gmem_bias.move();
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
             // Apply the attn mask.
             softmax.apply_attn_bias(frag_bias, l);
-
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
         }
 
         // Apply the mask. 
@@ -664,15 +473,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 
         softmax.template reduce_max</*zero_init=*/Is_first>(p_max);
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            // can we print the tile row?
-            for (int i = 0; i < Mma_tile_p::MMAS_M * 2; i ++) {
-                printf("i=%d, p_max=%f\n", i, p_max[i]);
-            }
-            printf("\n");
-        }
-#endif
+
         // if ((threadIdx.x == 0) && (l == 38)) {
         //     printf("loop_step_idx %d, p_max = %.6f, %.6f., p_prev_lse = %.6f, %.6f\n", loop_step_idx, p_max[0], p_max[1], Is_first ? -10000.f : p_prev_lse[0], Is_first ? -10000.f : p_prev_lse[1]);
         // }
@@ -685,7 +486,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
         // Compute the exponential value.
         // softmax.apply_exp(p_max);
-        // Compute: exp(p - p_max)
         softmax.scale_apply_exp(p_max, params.scale_bmm1f);
 
         // if (!Is_first) {
@@ -706,15 +506,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         // softmax.reduce_sum(p_sum);
         softmax.reduce_sum_before_sync_(p_sum);
         // softmax.template reduce_sum_before_sync_</*zero_init=*/Is_first>(p_sum);
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            // can we print the tile row?
-            for (int i = 0; i < Mma_tile_p::MMAS_M * 2; i ++) {
-                printf("i=%d, p_max=%f\n", i, p_sum[i]);
-            }
-            printf("\n");
-        }
-#endif
+
         // float p_sum_log[Mma_tile_p::MMAS_M * 2];
         // for (int mi = 0; mi  < Mma_tile_p::MMAS_M * 2; ++mi) {
         //     float sum = p_sum[mi];
