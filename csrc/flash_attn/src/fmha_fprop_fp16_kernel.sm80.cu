@@ -62,11 +62,6 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     bool has_attn = !(launch_params.params.attn_mask_ptr == nullptr);
     bool has_bias = !(launch_params.params.attn_bias_ptr == nullptr);
 
-#ifdef DEBUG_PRINT
-    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d, mask_seq_mod_size=%d, mask_head_mod_size=%d\n", 
-        has_attn, has_bias, launch_params.params.bias_mod_size, launch_params.params.mask_seq_mod_size, launch_params.params.mask_head_mod_size);
-#endif
-
     if (has_attn) 
     {
         if (has_bias) {
@@ -178,8 +173,6 @@ void run_fmha_fp16_sm80(Launch_params<FMHA_fprop_params> &launch_params,
         auto dprops = at::cuda::getCurrentDeviceProperties();
         if (launch_params.params.d == 16) {
             if( launch_params.params.seqlen_k == 128 ) {
-                // int S, int D, int STEP, int WARPS_M, int WARPS_N, 
-                // D is [hidden_dim]
                 using Kernel_traits = FMHA_kernel_traits<128, 16, 16, 1, 4, 0x08u, elem_type>;
                 run_fmha_fp16_sm80_loop_<Kernel_traits>(launch_params, configure);
             } 
