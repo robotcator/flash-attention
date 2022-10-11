@@ -153,13 +153,11 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
     // conctructor
     Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
-    // TODO: load fun as s
 
     // Allocate the global memory tile loader for bias.
     using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
     // conctructor
     Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
-    // TODO: load fun as s
 
     using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
     Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
@@ -214,14 +212,10 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     gmem_softmax_d.move(begin);
 
     if constexpr (has_attn) {
-    // if (!(params.attn_mask_ptr == nullptr)) {
-        // TODO: mask move 
         gmem_mask.move(begin);
     }
 
     if constexpr (has_attn) {
-    // if (!(params.attn_bias_ptr == nullptr)) {
-        // TODO: mask move 
         gmem_bias.move(begin);
         gmem_ds.move(begin);
     }
@@ -250,7 +244,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // Commit the data for Q, dO, and V to shared memory.
     gmem_q.commit(gemm_q_k.smem_q);
     gmem_do.commit(smem_do);
-    // D_sum
+
     if (Is_first) {
         dot_do_o<Gmem_tile_do::ROWS, Gmem_tile_do::THREADS_PER_ROW, elem_type>(
             gmem_do.fetch_, gmem_o.fetch_, params.p_dropout, gmem_softmax_d, tidx
@@ -363,55 +357,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
             gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
             gmem_mask.move();
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("before attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
             // Apply the attn mask.
             softmax.apply_attn_mask(frag_mask);
-
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("after attn mask softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
         }
 
         if constexpr (has_bias) {
@@ -421,55 +368,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
             gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
             gmem_bias.move();
 
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("before attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
             // Apply the attn mask.
             softmax.apply_attn_bias(frag_bias, l);
-
-#ifdef DEBUG_PRINT
-        if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0) && l == 0)  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    // 1st row - 4 elements per row.
-                    float tmp_00 = softmax.elt_[2 * mi + 0][4 * ki + 0];
-                    float tmp_01 = softmax.elt_[2 * mi + 0][4 * ki + 1];
-                    float tmp_02 = softmax.elt_[2 * mi + 0][4 * ki + 2];
-                    float tmp_03 = softmax.elt_[2 * mi + 0][4 * ki + 3];
-
-                    // 2nd row - 4 elements per row.
-                    float tmp_10 = softmax.elt_[2 * mi + 1][4 * ki + 0];
-                    float tmp_11 = softmax.elt_[2 * mi + 1][4 * ki + 1];
-                    float tmp_12 = softmax.elt_[2 * mi + 1][4 * ki + 2];
-                    float tmp_13 = softmax.elt_[2 * mi + 1][4 * ki + 3];
-
-                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_00, tmp_01, tmp_02, tmp_03);
-                    printf("after attn bias softmax: mi=%d, ki=%d, %f %f %f %f\n", mi, ki, tmp_10, tmp_11, tmp_12, tmp_13);
-                }
-            }
-            printf("\n");
-        }
-#endif
         }
 
         // Apply the mask.
@@ -478,23 +378,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         // softmax.apply_exp(p_lse);
         // exp (x - (max+log(sum))) = exp(x - max) / sum
         softmax.template scale_apply_exp</*scale_max=*/false>(p_lse, params.scale_bmm1f);
-#ifdef DEBUG_PRINT
-        if ((blockIdx.x == 0) && (blockIdx.y == 0))  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    for (int ii = 0; ii < 2; ii ++) {
-                        for (int jj = 0; jj < 4; jj ++) {
-                            int st_row = 2 * mi + ii;
-                            int st_col = 4 * ki + jj;
-                            printf("bwd softmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%f\n",
-                                threadIdx.x, l, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
-                        }
-                    }
-                }
-            }
-            printf("\n");
-        }
-#endif
+
         if (Is_dropout) {
             // softmax.apply_dropout(ph, params.p_dropout_in_uint);
             // softmax.template apply_dropout</*encode_dropout_in_sign_bit=*/true>(ph, params.p_dropout_in_uint);
@@ -522,7 +406,6 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         //     __syncthreads();
         // }
 
-        // what's meaning?
         fmha::Fragment_accumulator acc_dp[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
         #pragma unroll
         for (int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi) {
@@ -599,25 +482,8 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
 
         softmax.template pack<elem_type>(frag_p);
 
-        // if constexpr (has_bias) {
-        if (!(params.attn_bias_ptr == nullptr)) {
-#ifdef DEBUG_PRINT
-        if ((blockIdx.x == 0) && (blockIdx.y == 0))  {
-            for( int mi = 0; mi < Mma_tile_p::MMAS_M; ++mi ) {
-                for( int ki = 0; ki < Mma_tile_p::MMAS_N; ++ki ) {
-                    for (int ii = 0; ii < 2; ii ++) {
-                        for (int jj = 0; jj < 4; jj ++) {
-                            int st_row = 2 * mi + ii;
-                            int st_col = 4 * ki + jj;
-                            printf("bwd dsoftmax: threadIdx=%d, l=%d, mi=%d, ki=%d, ii=%d, jj=%d, elt=%f\n",
-                                threadIdx.x, l, mi, ki, ii, jj, softmax.elt_[st_row][st_col]);
-                        }
-                    }
-                }
-            }
-            printf("\n");
-        }
-#endif
+        if constexpr (has_bias) {
+        // if (!(params.attn_bias_ptr == nullptr)) {
             gmem_ds.template store<elem_type>(softmax.elt_);
             gmem_ds.move();
         }
