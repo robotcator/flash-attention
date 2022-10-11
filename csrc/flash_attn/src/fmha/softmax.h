@@ -502,21 +502,7 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
                     #pragma unroll
                     for( int jj = 0; jj < 4; ++jj ) {
                         float value = toFloat(mask[mi][ni].elt(ii * 4 + jj));
-                        // if( abs(value) > 0 ) {
-                        //     this->elt_[2 * mi + ii][4 * ni + jj] = zero ? 0.f : -INFINITY;
-                        // }
-                        // if( value < 0 ) {
-                        //     this->elt_[2 * mi + ii][4 * ni + jj] = -INFINITY;
-                        // }
                         this->elt_[2 * mi + ii][4 * ni + jj] += value;
-#ifdef DEBUG_PRINT
-                        if ((blockIdx.x == 0) && (blockIdx.y == 0) && l == 0) {
-                            printf("Attnmask: threadIdx.x = %d, threadIdx.y = %d, mi = %d, ni = %d, ii = %d, jj = %d, value = %f, softmax = %f, l = %d, loop_step_idx=%d, blockIdx.x = %d\n", 
-                                threadIdx.x, threadIdx.y, mi, ni, ii, jj, float(value), this->elt_[2 * mi + ii][4 * ni + jj], l, loop_step_idx, blockIdx.x);
-                        }
-#endif
-                        // this->elt_[2 * mi + ii][4 * ni + jj] += float(mask[mi][ni].elt(ii * 4 + jj));
-                        // this->elt_[2 * mi + ii][4 * ni + jj] += toFloat(mask[mi][ni].elt(ii * 4 + jj));
                     }
                 }
             }
@@ -536,12 +522,6 @@ struct Softmax : public Softmax_base<Cta_tile, Kernel_traits> {
                     for( int jj = 0; jj < 4; ++jj ) {
                         float value = toFloat(bias[mi][ni].elt(ii * 4 + jj));
                         this->elt_[2 * mi + ii][4 * ni + jj] += value;
-#ifdef DEBUG_PRINT
-                        if ((blockIdx.x == 0) && (blockIdx.y == 0)) {
-                            printf("AttnBias: threadIdx.x = %d, threadIdx.y = %d, mi = %d, ni = %d, ii = %d, jj = %d, value = %f, softmax = %f, ldx = %d, blockIdx.x = %d\n", 
-                                threadIdx.x, threadIdx.y, mi, ni, ii, jj, float(value), this->elt_[2 * mi + ii][4 * ni + jj], l, blockIdx.x);
-                        }
-#endif
                     }
                 }
             }
