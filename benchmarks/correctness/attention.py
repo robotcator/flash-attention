@@ -10,8 +10,6 @@ def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
     return tensor.permute(first_inds + [zero_index + i for i in inds])
 
 def _attention(query, key, value, mask=None, bias=None, upcast=False) -> torch.Tensor:
-    # upcast: whether to cast all inputs to fp32, do all computation in fp32, then cast
-    # output back to fp16/bf16.
     dtype_og = query.dtype
 
     if upcast:
@@ -29,13 +27,6 @@ def _attention(query, key, value, mask=None, bias=None, upcast=False) -> torch.T
     # [*, H, Q, K]
     a = torch.matmul(query, key)
 
-    # if biases is not None:
-    #     a += biases
-    
-    # if mask is not None:
-    #     a.masked_fill_(mask < 0, float('-inf'))
-
-    # a = softmax_no_cast(a, -1)
     a = softmax_dropout(a, dropout_prob=0, is_training=True, mask=mask, bias=bias)
 
     # [*, H, Q, C_hidden]

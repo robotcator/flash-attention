@@ -222,7 +222,7 @@ void set_params_dgrad(FMHA_dgrad_params &params,
     params.attn_ds_ptr = attn_ds;
 }
 
-#ifdef DDEBUG_PRINT
+#ifdef DEBUG_PRINT
 void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const std::string &label) {
     std::string file_name = label + "_" + tensor_name + ".data";
     std::ofstream file(file_name.c_str());
@@ -361,7 +361,6 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     }
     int max_seqlen_q = ((max_seqlen_q_ + 16 - 1) / 16) * 16;
     bool loop = max_seqlen_k > blocksize_c;
-    // loop over blocks more than once ?
 
     auto opts = q.options();
 
