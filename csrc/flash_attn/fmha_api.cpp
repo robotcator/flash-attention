@@ -32,10 +32,6 @@
 
 #include "fmha.h"
 
-#ifdef DDEBUG_PRINT
-#include "fmha_api.h"
-#include <fstream>
-#endif
 
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
 
@@ -113,27 +109,6 @@ void set_params_fprop(FMHA_fprop_params &params,
     params.bias_mod_size = bias_mod_size;
     params.mask_head_mod_size = mask_head_mod_size;
     params.mask_seq_mod_size = mask_seq_mod_size;
-
-
-#ifdef DEBUG_PRINT
-    printf("========================================\n");
-    printf("params.q_row_stride_in_elts = %d \n", params.q_row_stride_in_elts);
-    printf("params.k_row_stride_in_elts = %d \n", params.k_row_stride_in_elts);
-    printf("params.v_row_stride_in_elts = %d \n", params.v_row_stride_in_elts);
-    printf("params.q_head_stride_in_elts = %d \n", params.q_head_stride_in_elts);
-    printf("params.k_head_stride_in_elts = %d \n", params.k_head_stride_in_elts);
-    printf("params.v_head_stride_in_elts = %d \n", params.v_head_stride_in_elts);
-    printf("params.h = %d \n", params.h);
-    printf("params.b = %d \n", params.b);
-    printf("params.seqlen_q (max seq) = %d \n", params.seqlen_q);
-    printf("params.seqlen_k (max seq) = %d \n", params.seqlen_k); 
-    printf("params.d = %d \n", params.d);
-    printf("params.o_row_stride_in_elts = %d \n", params.o_row_stride_in_elts);
-    printf("params.o_head_stride_in_elts = %d \n", params.o_head_stride_in_elts);
-    printf("params.s_stride_in_bytes = %d \n", params.s_stride_in_bytes);
-    printf("========================================\n");
-#endif
-
 
     // Set the different scale values.
     // const float scale_bmm1 = 1.f / sqrtf(d);
@@ -221,34 +196,6 @@ void set_params_dgrad(FMHA_dgrad_params &params,
     params.dsoftmax_sum = dsoftmax_sum_d;
     params.attn_ds_ptr = attn_ds;
 }
-
-#ifdef DEBUG_PRINT
-void dump_tensor(const std::string &tensor_name, const at::Tensor &tensor, const std::string &label) {
-    std::string file_name = label + "_" + tensor_name + ".data";
-    std::ofstream file(file_name.c_str());
-    // file << tensor_name << std::endl;
-    // file << tensor << std::endl;
-    std::cout << "tensor_name stride 0: " << tensor_name << " " <<  tensor.stride(0) << std::endl;
-    std::cout << "tensor_name stride 1: " << tensor_name << " " <<  tensor.stride(1) << std::endl;
-    std::cout << "tensor_name stride 2: " << tensor_name << " " <<  tensor.stride(2) << std::endl;
-    std::cout << "tensor_name stride 3: " << tensor_name << " " <<  tensor.stride(-1) << std::endl;
-    
-    std::cout << "tensor_name size: " << tensor_name << " " <<  tensor.sizes() << std::endl;
-    // cost too much time
-    auto flatten_tensor = tensor.flatten();
-    auto size = flatten_tensor.numel();
-
-    for (int i = 0; i < size; i ++) {
-        file << flatten_tensor[i].item() << " ";
-        // file << flatten_tensor[i] << " ";
-    }
-    file << std::endl;
-
-    std::string sfile_name = label + "_" + tensor_name + ".pt";
-    std::ofstream sfile(sfile_name.c_str());
-    torch::save(tensor, sfile);
-}
-#endif
 
 std::vector<at::Tensor>
 mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q := \sum_{i=0}^{b} s_i
@@ -339,18 +286,6 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
         TORCH_CHECK(mask_sizes[2] == 1 || mask_sizes[2] == max_seqlen_q_);
     }
 
-#ifdef DEBUG_PRINT
-    dump_tensor("input_q", q, "");
-    // dump_tensor("input_k", k, "");
-    // dump_tensor("input_v", v, "");
-    if (attn_mask.has_value()) {
-        dump_tensor("input_mask", *attn_mask, "");
-    }
-    if (attn_bias.has_value()) {
-        dump_tensor("input_bias", *attn_bias, "");
-    }
-#endif
-
     int blocksize_c = ((head_size == 128 && (is_dropout || !is_sm80)) || (is_sm75 && head_size == 64 && is_dropout)) ? 128 : 256;
     // Need to round max_seqlen_k to multiples of blocksize_c
     int max_seqlen_k = ((max_seqlen_k_ + blocksize_c - 1) / blocksize_c) * blocksize_c;
@@ -420,10 +355,6 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     }
 
     run_fmha_fp16_sm80(launch_params, /*configure=*/false);
-
-#ifdef DEBUG_PRINT
-    dump_tensor("output_o", o, "");
-#endif
 
     std::vector<at::Tensor> result = {o, softmax_lse};
     if (return_softmax) {result.push_back(s);}
@@ -915,7 +846,6 @@ mha_bwd_block(const at::Tensor &dout,  // total x num_heads, x head_size
     return { dq, dk, dv, softmax_d };
 }
 
-#if !defined(DEBUG_USING_NVCC)
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "Fused Multi-head Self-attention";
     m.def("fwd", &mha_fwd, "Forward pass");
@@ -923,4 +853,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("fwd_block", &mha_fwd_block, "Forward pass (blocksparse)");
     m.def("bwd_block", &mha_bwd_block, "Backward pass (blocksparse)");
 }
-#endif
