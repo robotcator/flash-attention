@@ -31,10 +31,6 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
     bool has_attn = !(params.attn_mask_ptr == nullptr);
     bool has_bias = !(params.attn_bias_ptr == nullptr);
 
-#ifdef DEBUG_PRINT
-    printf ("has_attn=%d, has_bias=%d, bias_mod_size=%d\n", has_attn, has_bias, params.bias_mod_size);
-#endif
-
     if (has_attn) {
         if (has_bias) {
             BOOL_SWITCH(is_dropout, IsDropoutConst, [&] {
@@ -128,32 +124,6 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
             });
         }
     }
-    // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
-//     BOOL_SWITCH(is_dropout, IsDropoutConst, [&] {
-//         auto kernel = params.is_causal
-//             ? &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, true>
-//             : &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, false>;
-//         if (params.seqlen_k == blocksize_c) {
-//             kernel = params.is_causal
-//                 ? &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, true, /*loop_steps=*/1>
-//                 : &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, false, /*loop_steps=*/1>;
-//         } else if (params.seqlen_k == blocksize_c * 2) {
-//             kernel = params.is_causal
-//                 ? &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, true, /*loop_steps=*/2>
-//                 : &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, false, /*loop_steps=*/2>;
-//         }
-//         if( smem_size_dq_dk_dv >= 48 * 1024 ) {
-//             FMHA_CHECK_CUDA(cudaFuncSetAttribute(
-//                 kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size_dq_dk_dv));
-//         }
-//         dim3 grid(params.b, params.h);
-//         kernel<<<grid, Kernel_traits::THREADS, smem_size_dq_dk_dv, stream>>>(params);
-// #ifdef DEBUG_PRINT
-//         printf("bwd grid size: %d %d\n", params.b, params.h);
-//         printf("bwd block size: %d\n", Kernel_traits::THREADS);
-// #endif
-//         FMHA_CHECK_CUDA(cudaPeekAtLastError());
-//     });
 }
 
 void run_fmha_dgrad_fp16_sm80(const FMHA_dgrad_params &params, cudaStream_t stream) {
