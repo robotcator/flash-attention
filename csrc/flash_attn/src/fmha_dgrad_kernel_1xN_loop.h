@@ -148,19 +148,22 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-    // bool has_attn = !(params.attn_mask_ptr == nullptr);
-    // Allocate the global memory tile loader for mask.
-    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-    // conctructor
-    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
+    if constexpr (has_attn) {
+        // Allocate the global memory tile loader for mask.
+        using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+        // conctructor
+        Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
+    }
 
-    // Allocate the global memory tile loader for bias.
-    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-    // conctructor
-    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    if constexpr (has_bias) {
+        // Allocate the global memory tile loader for bias.
+        using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+        // conctructor
+        Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
 
-    using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
-    Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
+        using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
+        Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
+    }
 
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 
@@ -215,7 +218,7 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         gmem_mask.move(begin);
     }
 
-    if constexpr (has_attn) {
+    if constexpr (has_bias) {
         gmem_bias.move(begin);
         gmem_ds.move(begin);
     }
@@ -351,7 +354,6 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         // Convert from the accumulator type to FP32 for Softmax.
         softmax.unpack_noscale(acc_p);
         if constexpr (has_attn) {
-        // if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             gmem_mask.template load<Frag_mask, elem_type>(frag_mask);
@@ -362,7 +364,6 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
         }
 
         if constexpr (has_bias) {
-        // if (!(params.attn_bias_ptr == nullptr)) {
             using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             gmem_bias.template load<Frag_Bias, elem_type>(frag_bias);
