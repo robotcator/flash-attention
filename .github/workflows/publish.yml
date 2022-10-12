@@ -34,7 +34,6 @@ jobs:
   wheel:
     name: Build Wheel
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 360
     needs: release
     
     strategy:
