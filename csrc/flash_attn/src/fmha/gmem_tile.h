@@ -359,7 +359,6 @@ struct Gmem_tile_mma_sd {
 template< typename Cta_tile, typename Base = Gmem_tile_mma_sd<Cta_tile, sizeof(uint16_t)> >
 struct Gmem_tile_mma_s : public Base {
 
-    // mma matrix multiply
     // The number of mmas in the vertical dimension.
     static constexpr int M = Base::MMAS_M;
     // The number of mmas in the horizontal dimension.
@@ -470,12 +469,10 @@ struct Gmem_tile_mma_mask {
         // this col is mean the 8x4 tile's cole
 
         row = warp_m * Mma_tile::M_PER_MMA + quad;
-        static_assert(Mma_tile::M_PER_MMA == 16, 
-                "only support sm80 m16n8k16 tensor core");
+        static_assert(Mma_tile::M_PER_MMA == 16);
 
         col = warp_n * Mma_tile::N_PER_MMA + tid;
-        static_assert(Mma_tile::N_PER_MMA == 16, 
-                "only support sm80 m16n8k16 tensor core");
+        static_assert(Mma_tile::N_PER_MMA == 16);
 
         // The distance between two blocks (in bytes).
         // TODO: mask is [bs * seq, head, seq_q, seq_k]
@@ -609,12 +606,10 @@ struct Gmem_tile_mma_bias {
         // this col is mean the 8x4 tile's cole
 
         row = warp_m * Mma_tile::M_PER_MMA + quad;
-        static_assert(Mma_tile::M_PER_MMA == 16, 
-                "only support sm80 m16n8k16 tensor core");
+        static_assert(Mma_tile::M_PER_MMA == 16);
 
         col = warp_n * Mma_tile::N_PER_MMA + tid;
-        static_assert(Mma_tile::N_PER_MMA == 16, 
-                "only support sm80 m16n8k16 tensor core");
+        static_assert(Mma_tile::N_PER_MMA == 16);
 
         // The distance between two blocks (in bytes).
         // TODO: mask is [bs, head, seq_q, seq_k]
