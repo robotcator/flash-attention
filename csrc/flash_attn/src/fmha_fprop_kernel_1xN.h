@@ -52,7 +52,6 @@ struct Gemm_Q_K_base {
     using Mma_tile_p = fmha::Hmma_tile<Cta_tile_p>;
 
     static constexpr int SMEM_BYTES_SOFTMAX = Cta_tile_p::M * Cta_tile_p::WARPS_N * sizeof(float) * 2;
-    // ?
 
     __device__ inline Gemm_Q_K_base(char * smem_ptr_q, char * smem_ptr_k, const int tidx) 
         : smem_q(smem_ptr_q, tidx)
@@ -260,7 +259,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
 
     // Allocate the global memory tile loader for Q.
     Gmem_tile_q gmem_q(params.q_ptr, params.q_row_stride_in_elts, params.q_head_stride_in_elts, binfo, tidx, true);
-
     // Allocate the global memory tile loader for O.
     Gmem_tile_o gmem_o(params.o_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
     Gmem_tile_o_tmp gmem_o_tmp(params.o_tmp_ptr, params.o_row_stride_in_elts, params.o_head_stride_in_elts, binfo, tidx);
@@ -422,7 +420,7 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
             gmem_mask.move();
 
             // Apply the attn mask.
-            softmax.apply_attn_mask(frag_mask, l, loop_step_idx);
+            softmax.apply_attn_mask(frag_mask);
         }
 
         if constexpr (has_attn_bias) {
