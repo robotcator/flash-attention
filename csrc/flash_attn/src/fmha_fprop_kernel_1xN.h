@@ -267,17 +267,19 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-    // bool has_attn = !(params.attn_mask_ptr == nullptr);
-    // Allocate the global memory tile loader for mask.
-    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-    // conctructor
-    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
+    if constexpr (has_attn) {
+        // Allocate the global memory tile loader for mask.
+        using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+        // conctructor
+        Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
+    }
 
-    // bool has_bias = !(params.attn_bias_ptr == nullptr);
-    // Allocate the global memory tile loader for bias.
-    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-    // conctructor
-    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    if constexpr (has_bias) {
+        // Allocate the global memory tile loader for bias.
+        using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+        // conctructor
+        Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    }
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
@@ -294,12 +296,10 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     gmem_softmax_lse.move(begin);
     
     if constexpr (has_attn) {
-    // if (!(params.attn_mask_ptr == nullptr)) {
         gmem_mask.move(begin);
     }
 
     if constexpr (has_bias) {
-    // if (!(params.attn_bias_ptr == nullptr)) {
         gmem_bias.move(begin);
     }
     
@@ -419,7 +419,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         softmax.unpack_noscale(acc_p);
 
         if constexpr (has_attn) {
-        // if (!(params.attn_mask_ptr == nullptr)) {
             using Frag_mask = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_mask frag_mask[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             fmha::clear(frag_mask);
@@ -431,7 +430,6 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
         }
 
         if constexpr (has_bias) {
-        // if (!(params.attn_bias_ptr == nullptr)) {
             using Frag_Bias = fmha::Fragment_c<fmha::Row, elem_type>;
             Frag_Bias frag_bias[Mma_tile_p::MMAS_M][Mma_tile_p::MMAS_N];
             fmha::clear(frag_bias);
