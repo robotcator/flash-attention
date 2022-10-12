@@ -148,22 +148,18 @@ inline __device__ void compute_dq_dk_dv_1xN_one_iter(const Params &params, Prng 
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-    if constexpr (has_attn_mask) {
-        // Allocate the global memory tile loader for mask.
-        using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-        // conctructor
-        Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
-    }
+    // Allocate the global memory tile loader for mask.
+    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+    // conctructor
+    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
 
-    if constexpr (has_attn_bias) {
-        // Allocate the global memory tile loader for bias.
-        using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-        // conctructor
-        Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    // Allocate the global memory tile loader for bias.
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+    using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
 
-        using Gmem_tile_ds = typename Kernel_traits::Gmem_tile_ds;
-        Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
-    }
+    // conctructor
+    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
+    Gmem_tile_ds gmem_ds(params, binfo, tidx, loop_step_idx);
 
     fmha::Mask<Cta_tile_p, Is_causal> mask(binfo, tidx, loop_step_idx);
 

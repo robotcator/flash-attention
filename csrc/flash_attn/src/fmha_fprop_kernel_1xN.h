@@ -267,19 +267,15 @@ inline __device__ void device_1xN_(const Params &params, const int bidb, const i
     // Allocate the global memory tile loader for S.
     Gmem_tile_s gmem_s(params, binfo, tidx);
 
-    if constexpr (has_attn_mask) {
-        // Allocate the global memory tile loader for mask.
-        using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
-        // conctructor
-        Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
-    }
+    // Allocate the global memory tile loader for mask.
+    using Gmem_tile_mask = typename Kernel_traits::Gmem_tile_mask;
+    // conctructor
+    Gmem_tile_mask gmem_mask(params, binfo, tidx, loop_step_idx);
 
-    if constexpr (has_attn_bias) {
-        // Allocate the global memory tile loader for bias.
-        using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
-        // conctructor
-        Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
-    }
+    // Allocate the global memory tile loader for bias.
+    using Gmem_tile_bias = typename Kernel_traits::Gmem_tile_bias;
+    // conctructor
+    Gmem_tile_bias gmem_bias(params, binfo, tidx, loop_step_idx);
 
     Gmem_softmax_sum gmem_softmax_lse(params.softmax_lse_ptr, params, tidx);
 
