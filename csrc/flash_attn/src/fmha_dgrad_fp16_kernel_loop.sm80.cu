@@ -29,11 +29,11 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
 
     bool is_dropout = params.p_dropout < 1.f;  // params.p_dropout is the probability of "keeping"
 
-    bool has_attn = !(params.attn_mask_ptr == nullptr);
-    bool has_bias = !(params.attn_bias_ptr == nullptr);
+    bool has_attn_mask = !(params.attn_mask_ptr == nullptr);
+    bool has_attn_bias = !(params.attn_bias_ptr == nullptr);
 
-    if (has_attn) {
-        if (has_bias) {
+    if (has_attn_mask) {
+        if (has_attn_bias) {
             BOOL_SWITCH(is_dropout, IsDropoutConst, [&] {
                 auto kernel = params.is_causal
                     ? &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, true, true, true>
@@ -79,7 +79,7 @@ void run_fmha_dgrad_fp16_sm80_loop_(const FMHA_dgrad_params &params, cudaStream_
             });
         }
     }else{
-        if (has_bias) {
+        if (has_attn_bias) {
             BOOL_SWITCH(is_dropout, IsDropoutConst, [&] {
                 auto kernel = params.is_causal
                     ? &fmha_dgrad_fp16_sm80_dq_dk_dv_loop_kernel<Kernel_traits, IsDropoutConst, true, false, true>
