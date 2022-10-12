@@ -60,12 +60,12 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
     const int smem_size = fmha::get_dynamic_smem_size<Kernel_traits>()
         + (loop_steps > 1 ? smem_size_softmax_lse : 0);
 
-    bool has_attn = !(launch_params.params.attn_mask_ptr == nullptr);
-    bool has_bias = !(launch_params.params.attn_bias_ptr == nullptr);
+    bool has_attn_mask = !(launch_params.params.attn_mask_ptr == nullptr);
+    bool has_attn_bias = !(launch_params.params.attn_bias_ptr == nullptr);
 
-    if (has_attn) 
+    if (has_attn_mask) 
     {
-        if (has_bias) {
+        if (has_attn_bias) {
             // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
             // https://github.com/kokkos/kokkos-kernels/issues/349
             // https://github.com/HazyResearch/flash-attention/issues/21
@@ -115,7 +115,7 @@ void run_fmha_fp16_sm80_loop_(Launch_params<FMHA_fprop_params> &launch_params,
             });
         }
     }else{
-        if (has_bias) {
+        if (has_attn_bias) {
             // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
             // https://github.com/kokkos/kokkos-kernels/issues/349
             // https://github.com/HazyResearch/flash-attention/issues/21
