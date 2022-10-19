@@ -245,7 +245,10 @@ mha_fwd(const at::Tensor &q,         // total_q x num_heads x head_size, total_q
     TORCH_CHECK(q.stride(-1) == 1);
     TORCH_CHECK(k.stride(-1) == 1);
     TORCH_CHECK(v.stride(-1) == 1);
+<<<<<<< HEAD
     TORCH_CHECK(out.stride(-1) == 1);
+=======
+>>>>>>> 484aa70124640e4da29ef1cac7d23b4f286d547b
     TORCH_CHECK(cu_seqlens_q.is_contiguous());
     TORCH_CHECK(cu_seqlens_k.is_contiguous());
 

@@ -771,6 +771,7 @@ def test_flash_attn_race_condition(seqlen, d, dropout_p, causal, dtype):
                                                                 (q_unpad, k_unpad, v_unpad), g)
             assert torch.equal(dq_unpad, dq_unpad_0)
             assert torch.equal(dk_unpad, dk_unpad_0)
+<<<<<<< HEAD
             assert torch.equal(dv_unpad, dv_unpad_0)
 
 
@@ -847,3 +848,6 @@ def test_flash_attn_multigpu():
         assert 0.99 <= dropout_fraction / dropout_p <= 1.01
 
     assert (dqkv - dqkv_ref).abs().max().item() <= 2 * (dqkv_pt - dqkv_ref).abs().max().item()
+=======
+            assert torch.equal(dv_unpad, dv_unpad_0)
+>>>>>>> 484aa70124640e4da29ef1cac7d23b4f286d547b
