@@ -125,11 +125,7 @@ class FlashAttnFunc(torch.autograd.Function):
         if softmax_scale is None:
             softmax_scale = q.shape[-1] ** (-0.5)
         out, softmax_lse, S_dmask = _flash_attn_forward(
-<<<<<<< HEAD
             q, k, v, torch.empty_like(q), cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, attn_mask, attn_bias,
-=======
-            q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k, attn_mask, attn_bias,
->>>>>>> 484aa70124640e4da29ef1cac7d23b4f286d547b
             dropout_p, softmax_scale, causal=causal, return_softmax=return_softmax
         )
         ctx.save_for_backward(q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_k, rng_state, attn_mask, attn_bias)
@@ -147,10 +143,6 @@ class FlashAttnFunc(torch.autograd.Function):
             cur_rng_state = torch.cuda.get_rng_state()
             torch.cuda.set_rng_state(rng_state)
         dq, dk, dv = torch.empty_like(q), torch.empty_like(k), torch.empty_like(v)
-<<<<<<< HEAD
-=======
-        # import pdb; pdb.set_trace()
->>>>>>> 484aa70124640e4da29ef1cac7d23b4f286d547b
         dq, dk, dv, softmax_d, dbias = _flash_attn_backward(
             dout, q, k, v, out, softmax_lse, dq, dk, dv, cu_seqlens_q, cu_seqlens_k, attn_mask, attn_bias,
             ctx.max_seqlen_q, ctx.max_seqlen_k, ctx.dropout_p, ctx.softmax_scale, ctx.causal
@@ -159,7 +151,6 @@ class FlashAttnFunc(torch.autograd.Function):
             torch.cuda.set_rng_state(cur_rng_state)
         return dq, dk, dv, None, None, None, None, None, dbias, None, None, None, None
         # TODO: the last two is attn_mask, attn_bias, bias need gradient
-<<<<<<< HEAD
 
 
 class FlashAttnQKVPackedSplitFunc(torch.autograd.Function):
@@ -239,8 +230,6 @@ class FlashAttnQKVPackedSplitFunc(torch.autograd.Function):
         if rng_state0 is not None:
             torch.cuda.set_rng_state(cur_rng_state)
         return dqkv, None, None, None, None, None, None, None, None
-=======
->>>>>>> 484aa70124640e4da29ef1cac7d23b4f286d547b
 
 
 def flash_attn_unpadded_qkvpacked_func(qkv, cu_seqlens, max_seqlen, dropout_p, softmax_scale=None,
