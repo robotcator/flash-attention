@@ -513,7 +513,7 @@ struct Gmem_tile_mma_mask {
                             const int current_col = loop_step_idx * Cta_tile::N + ni * Mma_tile::N_PER_MMA_PER_CTA + jj * 8 + col;
                             ptrs[offset] = ptr_ + (uint32_t)(current_row % mask_seq_mod_size) * row_stride_in_bytes +
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
-                            preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
+                            preds[offset] = (current_row + (row % mask_seq_mod_size) < min(ROWS, actual_seqlen_q))
                                             && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
                         }
                     }
@@ -534,7 +534,7 @@ struct Gmem_tile_mma_mask {
                             ptrs[offset] = ptr_ + (uint32_t)(current_row % mask_seq_mod_size) * row_stride_in_bytes +
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
                             preds[offset] = 0;
-                            if ((current_row < min(ROWS, actual_seqlen_q))) {
+                            if ((current_row + (row % mask_seq_mod_size) < min(ROWS, actual_seqlen_q))) {
                                 if(current_col <= actual_seqlen_k) {
                                     if((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k){
                                         preds[offset] = 1;
@@ -681,7 +681,7 @@ struct Gmem_tile_mma_bias {
                             ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                            preds[offset] = (current_row < min(ROWS, actual_seqlen_q))
+                            preds[offset] = (current_row + row < min(ROWS, actual_seqlen_q))
                                             && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
                         }
                     }
@@ -702,7 +702,7 @@ struct Gmem_tile_mma_bias {
                             ptrs[offset] = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                         (uint32_t)current_col * BYTES_PER_ELEMENT;
                             preds[offset] = 0;
-                            if ((current_row < min(ROWS, actual_seqlen_q))) {
+                            if ((current_row + row < min(ROWS, actual_seqlen_q))) {
                                 if(current_col <= actual_seqlen_k) {
                                     if((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k){
                                         preds[offset] = 1;
@@ -850,7 +850,7 @@ struct Gmem_tile_mma_ds {
                             char *ptrs = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                             (uint32_t)current_col * BYTES_PER_ELEMENT;
 
-                            preds = (current_row < min(ROWS, actual_seqlen_q))
+                            preds = (current_row + row < min(ROWS, actual_seqlen_q))
                                             && ((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k);
                             if (preds) {
                                 fmha::stg(ptrs, dst);
@@ -873,7 +873,7 @@ struct Gmem_tile_mma_ds {
                             char *ptrs = ptr_ + (uint32_t)current_row * row_stride_in_bytes +
                                             (uint32_t)current_col * BYTES_PER_ELEMENT;
                             preds = 0;
-                            if ((current_row < min(ROWS, actual_seqlen_q))) {
+                            if ((current_row + row < min(ROWS, actual_seqlen_q))) {
                                 if(current_col <= actual_seqlen_k) {
                                     if((current_col + BYTES_PER_LDG / BYTES_PER_ELEMENT) <= actual_seqlen_k){
                                         preds = 1;
